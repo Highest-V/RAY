@@ -4,14 +4,9 @@
 local addonName = "RAY"
 local RAY_EventFrame = CreateFrame("Frame")
 
--- Стандартные настройки по умолчанию (создаются, если персонаж зашел в игру впервые)
+-- База данных теперь создается абсолютно пустой для каждого нового персонажа
 local defaultSettings = {
-    spells = {
-        { name = "Печать праведности/Печать повиновения", mode = "BUFF", target = "player", minStacks = 0, alertTime = 5, onlyInCombat = true, zoneWorld = true, zoneParty = true, zoneRaid = true, isCooldown = false, isProc = false },
-        { name = "Гиперскоростные ускорители", mode = "BUFF", target = "player", minStacks = 0, alertTime = 0, onlyInCombat = true, zoneWorld = true, zoneParty = true, zoneRaid = true, isCooldown = true, isProc = false },
-        { name = "Искусство войны", mode = "BUFF", target = "player", minStacks = 0, alertTime = 0, onlyInCombat = true, zoneWorld = true, zoneParty = true, zoneRaid = true, isCooldown = false, isProc = true },
-        { name = "Раскол брони", mode = "DEBUFF", target = "target", minStacks = 5, alertTime = 5, onlyInCombat = true, zoneWorld = true, zoneParty = true, zoneRaid = true, isCooldown = false, isProc = false }
-    }
+    spells = {}
 }
 
 local optionsPanel
@@ -30,7 +25,7 @@ RAY_EventFrame:RegisterEvent("ADDON_LOADED")
 RAY_EventFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
 RAY_EventFrame:SetScript("OnEvent", function(self, event, arg1)
     if event == "ADDON_LOADED" and arg1 == addonName then
-        -- Благодаря SavedVariablesPerCharacter, переменная RAY_Config теперь уникальна для каждого чара
+        -- Используется переменная SavedVariablesPerCharacter из вашего .toc
         if not RAY_Config then
             RAY_Config = defaultSettings
         else
@@ -197,25 +192,26 @@ CheckAllAuras = function()
                         local alertLine = ""
                         if spellData.mode == "DEBUFF" then
                             alertLine = "RAY: Наложи дебафф [" .. displayName .. "]" .. customReason
-else
-if spellData.isProc then
-alertLine = "RAY: Прок! Срочно жми [" .. displayName .. "]" .. customReason
-elseif spellData.isCooldown then
-alertLine = "RAY: Готово! Прожми [" .. displayName .. "]" .. customReason
-else
-alertLine = "RAY: Обнови бафф [" .. displayName .. "]" .. customReason
-end
-end
-uniqueAlerts[alertLine] = true
-end
-end
-end
-end
-end
-local alertText = ""
-for k, _ in pairs(uniqueAlerts) do
-if alertText ~= "" then alertText = alertText .. "\n" end
-alertText = alertText .. k
+                        else
+                            if spellData.isProc then
+                                alertLine = "RAY: Прок! [" .. displayName .. "]" .. customReason
+                            elseif spellData.isCooldown then
+                                alertLine = "RAY: Готово! Прожми [" .. displayName .. "]" .. customReason
+                            else
+                                alertLine = "RAY: Обнови бафф [" .. displayName .. "]" .. customReason
+                            end
+                        end
+                        uniqueAlerts[alertLine] = true
+                    end
+                end
+            end
+        end
+    end
+
+    local alertText = ""
+    for k, _ in pairs(uniqueAlerts) do
+        if alertText ~= "" then alertText = alertText .. "\n" end
+        alertText = alertText .. k
 end
 if alertText ~= "" then
 text:SetText(alertText)
