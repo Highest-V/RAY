@@ -195,7 +195,7 @@ CheckAllAuras = function()
                                 alertLine = "RAY: Прок! Срочно жми [" .. displayName .. "]" .. customReason
                             elseif spellData.isCooldown then
                                 alertLine = "RAY: Готово! Прожми [" .. displayName .. "]" .. customReason
-                            else
+else
 alertLine = "RAY: Обнови бафф [" .. displayName .. "]" .. customReason
 end
 end
@@ -228,6 +228,7 @@ engineEvents:SetScript("OnEvent", function(self, event, unit)
 if event == "UNIT_AURA" and unit ~= "player" and unit ~= "target" then return end
 CheckAllAuras()
 end)
+-- Легкий фоновый тикер обновлений боевой части
 local ticker = CreateFrame("Frame")
 local tTime = 0
 ticker:SetScript("OnUpdate", function(self, elapsed)
@@ -235,14 +236,13 @@ tTime = tTime + elapsed
 if tTime >= 0.4 then tTime = 0 CheckAllAuras() end
 end)
 -- =========================================================================
--- 4. ГРАФИЧЕСКИЙ ИНТЕРФЕЙС НАСТРОЕК (УМЕНЬШЕННЫЙ ШРИФТ + СДВИГ СПИСКОВ ВВЕРХ)
+-- 4. ГРАФИЧЕСКИЙ ИНТЕРФЕЙС НАСТРОЕК (ПРОИЗВОДИТЕЛЬНОСТЬ + ИСПРАВЛЕННЫЙ СКРОЛЛ)
 -- =========================================================================
 local shortcutFrame = CreateFrame("Frame")
 shortcutFrame:RegisterEvent("PLAYER_LOGIN")
 shortcutFrame:SetScript("OnEvent", function()
 optionsPanel = CreateFrame("Frame", "RAY_OptionsPanel", UIParent)
 optionsPanel.name = "RAY"
--- ИСПРАВЛЕНО: Уменьшен шрифт главного заголовка до GameFontNormal для экономии места
 local title = optionsPanel:CreateFontString(nil, "OVERLAY", "GameFontNormal")
 title:SetPoint("TOPLEFT", 16, -14)
 title:SetText("|cff00FFFFНастройки модификации RAY (Remember About Yourself)|r")
@@ -257,7 +257,6 @@ line:SetWidth(2)
 line:SetHeight(445)
 line:SetPoint("TOPLEFT", 305, -65)
 line:SetTexture(0.3, 0.3, 0.3, 0.5)
--- ИСПРАВЛЕНО: Шрифты заголовков колонок уменьшены до GameFontNormal и подняты выше (Y=-65)
 local leftHeader = optionsPanel:CreateFontString(nil, "OVERLAY", "GameFontNormal")
 leftHeader:SetPoint("TOPLEFT", 16, -65)
 leftHeader:SetText("|cff44FF44БАФФЫ И ПРОКИ|r")
@@ -268,7 +267,6 @@ local editCounter, sliderCounter, scrollCounter, cbCounter, dropCounter = 0, 0, 
 local leftUI, rightUI
 local function CreateColumn(isLeft, modeType, textColorCode)
 local offsetX = isLeft and 16 or 320
--- Текстовые поля подняты выше на Y=-105
 editCounter = editCounter + 1
 local editBox = CreateFrame("EditBox", "RAY_NewEdit_" .. editCounter, optionsPanel, "InputBoxTemplate")
 editBox:SetSize(200, 25)
@@ -284,7 +282,6 @@ btnOk:SetText("|cffFFFFFF|r|cffFFFF00ОК|r")
 local tex = btnOk:CreateTexture()
 tex:SetTexture(0.5, 0.1, 0.1, 0.8)
 btnOk:SetNormalTexture(tex)
--- Выпадающие меню подняты на Y=-145
 dropCounter = dropCounter + 1
 local dropDown = CreateFrame("Frame", "RAY_DropDown_" .. dropCounter, optionsPanel, "UIDropDownMenuTemplate")
 dropDown:SetPoint("TOPLEFT", offsetX - 15, -145)
@@ -310,14 +307,12 @@ end
 end)
 return cb
 end
--- Весь блок чекбоксов подтянут на 20 пикселей выше
 local cbCombat   = CreateLocalCheckbox("Включать только в бою", -175, "onlyInCombat")
 local cbWorld    = CreateLocalCheckbox("Отслеживать в открытом мире", -195, "zoneWorld")
 local cbParty    = CreateLocalCheckbox("Отслеживать в подземельях (Пати)", -217, "zoneParty")
 local cbRaid     = CreateLocalCheckbox("Отслеживать в рейдовых зонах", -239, "zoneRaid")
 local cbCooldown = CreateLocalCheckbox("Отслеживать готовность КД", -261, "isCooldown")
 local cbProc     = CreateLocalCheckbox("Это прок (оповещать, когда активен)", -283, "isProc")
--- Ползунки подняты на Y=-325
 sliderCounter = sliderCounter + 1
 local sTimeName = "RAY_NewTime_" .. sliderCounter
 local sliderTime = CreateFrame("Slider", sTimeName, optionsPanel, "OptionsSliderTemplate")
@@ -338,14 +333,12 @@ sliderStacks:SetValueStep(1)
 _G[sStacksName .. "Text"]:SetText(textColorCode .. "Стаки: 0|r")
 _G[sStacksName .. "Low"]:SetText("0")
 _G[sStacksName .. "High"]:SetText("5")
--- ИСПРАВЛЕНО: Скролл поднят на Y=-350, а его высота увеличена до удобных 115 пикселей.
--- Благодаря общему сдвигу интерфейса вверх, списки теперь идеально лежат в пределах рамки.
 scrollCounter = scrollCounter + 1
 local scrollFrame = CreateFrame("ScrollFrame", "RAY_NewScroll_" .. scrollCounter, optionsPanel, "UIPanelScrollFrameTemplate")
 scrollFrame:SetSize(250, 115)
 scrollFrame:SetPoint("TOPLEFT", offsetX, -350)
 local scrollContent = CreateFrame("Frame", nil, scrollFrame)
-scrollContent:SetSize(250, 500)
+scrollContent:SetSize(250, 1) -- Высота будет рассчитываться динамически в updateSpellLists
 scrollFrame:SetScrollChild(scrollContent)
 UIDropDownMenu_Initialize(dropDown, function()
 local idx = GetActiveIndex()
@@ -482,15 +475,28 @@ updateSpellLists() CheckAllAuras()
 end)
 if isBuff then buffCount = buffCount + 1 else debuffCount = debuffCount + 1 end
 end
+-- ИСПРАВЛЕНИЕ СКРОЛЛА: Динамически пересчитываем высоту контента
+-- Теперь ползунок скроллбара уменьшается/увеличивается под честный размер списка
+leftUI.scrollContent:SetHeight(math.max(1, (buffCount - 1) * 22))
+rightUI.scrollContent:SetHeight(math.max(1, (debuffCount - 1) * 22))
 end
 optionsPanel:SetScript("OnShow", function() selectBuff(nil) selectDebuff(nil) updateSpellLists() end)
+if InterfaceOptions_AddCategory then
 InterfaceOptions_AddCategory(optionsPanel)
+else
+local category = Settings.RegisterCanvasLayoutCategory(optionsPanel, "RAY")
+Settings.RegisterAddOnCategory(category)
+end
 end)
 -- Слэш-команда
 SLASH_RAY1 = "/ray"
 SlashCmdList["RAY"] = function()
 if optionsPanel then
+if InterfaceOptionsFrame_OpenToCategory then
 InterfaceOptionsFrame_OpenToCategory(optionsPanel)
 InterfaceOptionsFrame_OpenToCategory(optionsPanel)
+else
+Settings.OpenToCategory(optionsPanel.name)
+end
 end
 end
