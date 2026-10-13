@@ -194,7 +194,7 @@ CheckAllAuras = function()
                             alertLine = "RAY: Наложи дебафф [" .. displayName .. "]" .. customReason
                         else
                             if spellData.isProc then
-                                alertLine = "RAY: Прок! Срочно жми [" .. displayName .. "]" .. customReason
+                                alertLine = "RAY: Прок! [" .. displayName .. "]" .. customReason
                             elseif spellData.isCooldown then
                                 alertLine = "RAY: Готово! Прожми [" .. displayName .. "]" .. customReason
                             else
