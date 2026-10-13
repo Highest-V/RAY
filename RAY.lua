@@ -194,7 +194,7 @@ CheckAllAuras = function()
                             alertLine = "RAY: Наложи дебафф [" .. displayName .. "]" .. customReason
                         else
                             if spellData.isProc then
-                                alertLine = "RAY: Прок! [" .. displayName .. "]" .. customReason
+                                alertLine = "RAY: Прок! Срочно жми [" .. displayName .. "]" .. customReason
                             elseif spellData.isCooldown then
                                 alertLine = "RAY: Готово! Прожми [" .. displayName .. "]" .. customReason
                             else
@@ -212,7 +212,7 @@ CheckAllAuras = function()
     for k, _ in pairs(uniqueAlerts) do
         if alertText ~= "" then alertText = alertText .. "\n" end
         alertText = alertText .. k
-end
+    end
 if alertText ~= "" then
 text:SetText(alertText)
 if not frame:IsShown() then frame:Show() animGroup:Play() end
@@ -269,8 +269,9 @@ local editCounter, sliderCounter, cbCounter, dropCounter = 0, 0, 0, 0
 local leftUI, rightUI
 local function CreateColumn(isLeft, modeType, textColorCode)
 local offsetX = isLeft and 16 or 320
-editBoxCounter = editCounter + 1
-local editBox = CreateFrame("EditBox", "RAY_NewEdit_" .. editBoxCounter, optionsPanel, "InputBoxTemplate")
+-- ИСПРАВЛЕНО: Корректно увеличиваем счётчик editCounter, убирая опечатку в имени переменной
+editCounter = editCounter + 1
+local editBox = CreateFrame("EditBox", "RAY_NewEdit_" .. editCounter, optionsPanel, "InputBoxTemplate")
 editBox:SetSize(200, 25)
 editBox:SetPoint("TOPLEFT", offsetX, -105)
 editBox:SetAutoFocus(false)
