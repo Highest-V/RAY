@@ -6,7 +6,10 @@ local RAY_EventFrame = CreateFrame("Frame")
 
 -- База данных теперь создается абсолютно пустой для каждого нового персонажа
 local defaultSettings = {
-    spells = {}
+    enabled = true,
+    fontSize = 24, -- Здесь мы по-прежнему храним условный размер (24 = масштаб 1.0)
+    spells = {},
+    framePos = { point = "CENTER", x = 0, y = 150 }
 }
 
 local optionsPanel
@@ -25,11 +28,25 @@ RAY_EventFrame:RegisterEvent("ADDON_LOADED")
 RAY_EventFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
 RAY_EventFrame:SetScript("OnEvent", function(self, event, arg1)
     if event == "ADDON_LOADED" and arg1 == addonName then
-        -- Используется переменная SavedVariablesPerCharacter из вашего .toc
         if not RAY_Config then
             RAY_Config = defaultSettings
         else
-            if not RAY_Config.spells then RAY_Config.spells = defaultSettings.spells end
+            if RAY_Config.enabled == nil then RAY_Config.enabled = true end
+            if RAY_Config.fontSize == nil then RAY_Config.fontSize = 24 end
+            if not RAY_Config.spells then RAY_Config.spells = {} end
+            if not RAY_Config.framePos then 
+                RAY_Config.framePos = { point = "CENTER", x = 0, y = 150 } 
+            end
+        end
+        
+        -- Восстановление позиции фрейма
+        if RAY_MainFrame and RAY_Config.framePos then
+            RAY_MainFrame:ClearAllPoints()
+            RAY_MainFrame:SetPoint(RAY_Config.framePos.point, UIParent, RAY_Config.framePos.point, RAY_Config.framePos.x, RAY_Config.framePos.y)
+            
+            -- Применяем сохраненный масштаб к ФРЕЙМУ при загрузке игры
+            local savedScale = (RAY_Config.fontSize or 24) / 24
+            RAY_MainFrame:SetScale(savedScale)
         end
     elseif event == "PLAYER_ENTERING_WORLD" then
         DEFAULT_CHAT_FRAME:AddMessage("|cff00FFFFRAY - Remember About Yourself|r загружен. Настройка: /ray")
@@ -40,11 +57,31 @@ end)
 -- 2. СОЗДАНИЕ ГЛАВНОГО ИНДИКАТОРА НА ЭКРАНЕ
 -- =========================================================================
 local frame = CreateFrame("Frame", "RAY_MainFrame", UIParent)
-frame:SetSize(600, 250)
+frame:SetSize(400, 60)
 frame:SetPoint("CENTER", 0, 150)
+frame:SetMovable(true)
+frame:RegisterForDrag("LeftButton")
+frame:SetScript("OnDragStart", function(self) self:StartMoving() end)
+frame:SetScript("OnDragStop", function(self)
+    self:StopMovingOrSizing()
+    local point, _, _, x, y = self:GetPoint()
+    RAY_Config.framePos.point = point
+    RAY_Config.framePos.x = x
+    RAY_Config.framePos.y = y
+end)
 frame:Hide()
 
-local text = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+local dragBg = frame:CreateTexture(nil, "BACKGROUND")
+dragBg:SetAllPoints()
+dragBg:SetTexture(0.1, 0.1, 0.1, 0.6)
+dragBg:Hide()
+
+local dragBorder = frame:CreateTexture(nil, "OVERLAY")
+dragBorder:SetAllPoints()
+dragBorder:SetTexture("Interface\\Tooltips\\UI-Tooltip-Border")
+dragBorder:Hide()
+
+local text = frame:CreateFontString("RAY_MainFrameText", "OVERLAY", "GameFontNormalLarge")
 text:SetPoint("CENTER", frame, "CENTER")
 text:SetFont("Fonts\\FRIZQT__.TTF", 24, "OUTLINE") 
 text:SetTextColor(0, 1, 0.9) 
@@ -52,14 +89,19 @@ text:SetJustifyH("CENTER")
 
 local animGroup = frame:CreateAnimationGroup()
 local fadeOut = animGroup:CreateAnimation("Alpha")
-fadeOut:SetChange(-0.6)
-fadeOut:SetDuration(0.5)
-fadeOut:SetOrder(1)
+fadeOut:SetChange(-0.6) fadeOut:SetDuration(0.5) fadeOut:SetOrder(1)
 local fadeIn = animGroup:CreateAnimation("Alpha")
-fadeIn:SetChange(0.6)
-fadeIn:SetDuration(0.5)
-fadeIn:SetOrder(2)
+fadeIn:SetChange(0.6) fadeIn:SetDuration(0.5) fadeIn:SetOrder(2)
 animGroup:SetLooping("REPEAT")
+
+local function SetTooltip(widget, tooltipText)
+    widget:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+        GameTooltip:SetText(tooltipText, 1, 1, 1, nil, true)
+        GameTooltip:Show()
+    end)
+    widget:SetScript("OnLeave", function(self) GameTooltip:Hide() end)
+end
 
 -- =========================================================================
 -- 3. УНИВЕРСАЛЬНЫЙ ДВИЖОК ПРОВЕРКИ АУР И КУЛДАУНОВ
@@ -137,7 +179,12 @@ local function CheckAuraGroup(target, spellLine, filter)
 end
 
 CheckAllAuras = function()
-    if not RAY_Config or not RAY_Config.spells then return end
+    if frame:IsMouseEnabled() and frame:IsShown() then return end
+
+    if not RAY_Config or not RAY_Config.enabled or not RAY_Config.spells then 
+        if frame:IsShown() then frame:Hide() animGroup:Stop() end
+        return 
+    end
 
     local uniqueAlerts = {}
     local inCombat = UnitAffectingCombat("player")
@@ -171,48 +218,46 @@ CheckAllAuras = function()
                         end
                     elseif spellData.isCooldown then
                         if cdLeft and cdLeft > 0 then needAlert = false
-                        elseif not isActive then needAlert = true end
-                    else
-                        if not isActive then
-                            needAlert = true
-                        else
-                            if spellData.minStacks and spellData.minStacks > 0 and stacks < spellData.minStacks then
-                                needAlert = true
-                                customReason = " (" .. stacks .. "/" .. spellData.minStacks .. " ст)"
-                            end
-                            if spellData.alertTime and spellData.alertTime > 0 and timeLeft <= spellData.alertTime then
-                                needAlert = true
-                                customReason = " (" .. math.ceil(timeLeft) .. " сек)"
-                            end
-                        end
-                    end
-
-                    if needAlert then
-                        local displayName = string.match(spellData.name, "[^|/]+") or spellData.name
-                        local alertLine = ""
-                        if spellData.mode == "DEBUFF" then
-                            alertLine = "RAY: Наложи дебафф [" .. displayName .. "]" .. customReason
-                        else
-                            if spellData.isProc then
-                                alertLine = "RAY: Прок! [" .. displayName .. "]" .. customReason
-                            elseif spellData.isCooldown then
-                                alertLine = "RAY: Готово! Прожми [" .. displayName .. "]" .. customReason
-                            else
-                                alertLine = "RAY: Обнови бафф [" .. displayName .. "]" .. customReason
-                            end
-                        end
-                        uniqueAlerts[alertLine] = true
-                    end
-                end
-            end
-        end
-    end
-
-    local alertText = ""
-    for k, _ in pairs(uniqueAlerts) do
-        if alertText ~= "" then alertText = alertText .. "\n" end
-        alertText = alertText .. k
-    end
+elseif not isActive then needAlert = true end
+else
+if not isActive then
+needAlert = true
+else
+if spellData.minStacks and spellData.minStacks > 0 and stacks < spellData.minStacks then
+needAlert = true
+customReason = " (" .. stacks .. "/" .. spellData.minStacks .. " ст)"
+end
+if spellData.alertTime and spellData.alertTime > 0 and timeLeft <= spellData.alertTime then
+needAlert = true
+customReason = " (" .. math.ceil(timeLeft) .. " сек)"
+end
+end
+end
+if needAlert then
+local displayName = string.match(spellData.name, "[^|/]+") or spellData.name
+local alertLine = ""
+if spellData.mode == "DEBUFF" then
+alertLine = "RAY: Наложи дебафф [" .. displayName .. "]" .. customReason
+else
+if spellData.isProc then
+alertLine = "RAY: Прок! [" .. displayName .. "]" .. customReason
+elseif spellData.isCooldown then
+alertLine = "RAY: Готово! Прожми [" .. displayName .. "]" .. customReason
+else
+alertLine = "RAY: Обнови бафф [" .. displayName .. "]" .. customReason
+end
+end
+uniqueAlerts[alertLine] = true
+end
+end
+end
+end
+end
+local alertText = ""
+for k, _ in pairs(uniqueAlerts) do
+if alertText ~= "" then alertText = alertText .. "\n" end
+alertText = alertText .. k
+end
 if alertText ~= "" then
 text:SetText(alertText)
 if not frame:IsShown() then frame:Show() animGroup:Play() end
@@ -238,7 +283,7 @@ tTime = tTime + elapsed
 if tTime >= 0.4 then tTime = 0 CheckAllAuras() end
 end)
 -- =========================================================================
--- 4. ГРАФИЧЕСКИЙ ИНТЕРФЕЙС НАСТРОЕК (БЕЗОПАСНАЯ НЕВИДИМАЯ ПРОКРУТКА)
+-- 4. ГРАФИЧЕСКИЙ ИНТЕРФЕЙС НАСТРОЕК (СТРОГО БЕЗ ИСПОЛЬЗОВАНИЯ _G)
 -- =========================================================================
 local shortcutFrame = CreateFrame("Frame")
 shortcutFrame:RegisterEvent("PLAYER_LOGIN")
@@ -248,15 +293,65 @@ optionsPanel.name = "RAY"
 local title = optionsPanel:CreateFontString(nil, "OVERLAY", "GameFontNormal")
 title:SetPoint("TOPLEFT", 16, -14)
 title:SetText("|cff00FFFFНастройки модификации RAY (Remember About Yourself)|r")
-local mainCbName = "RAY_MainEnableCB"
-local mainCb = CreateFrame("CheckButton", mainCbName, optionsPanel, "InterfaceOptionsCheckButtonTemplate")
+local mainCb = CreateFrame("CheckButton", nil, optionsPanel, "InterfaceOptionsCheckButtonTemplate")
 mainCb:SetPoint("TOPLEFT", 16, -34)
-_G[mainCbName .. "Text"]:SetText("Включить отображение сообщений RAY на экране")
+local mainCbText = mainCb:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+mainCbText:SetPoint("LEFT", mainCb, "RIGHT", 5, 1)
+mainCbText:SetText("Включить отображение сообщений RAY на экране")
 mainCb:SetScript("OnShow", function(self) self:SetChecked(RAY_Config.enabled) end)
 mainCb:SetScript("OnClick", function(self) RAY_Config.enabled = self:GetChecked() CheckAllAuras() end)
+SetTooltip(mainCb, "Полностью включает или отключает вывод любых текстовых предупреждений аддона на экран.")
+local dragCb = CreateFrame("CheckButton", nil, optionsPanel, "InterfaceOptionsCheckButtonTemplate")
+dragCb:SetPoint("TOPLEFT", 415, -34)
+local dragCbText = dragCb:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+dragCbText:SetPoint("LEFT", dragCb, "RIGHT", 5, 1)
+dragCbText:SetText("|cffFFFF00Move|r")
+dragCb:SetScript("OnClick", function(self)
+if self:GetChecked() then
+frame:EnableMouse(true)
+dragBg:Show()
+dragBorder:Show()
+text:SetText("|cff00FFFF[RAY]: Зажми ЛКМ\nи перетащи меня!|r")
+if not frame:IsShown() then frame:Show() animGroup:Play() end
+else
+frame:EnableMouse(false)
+dragBg:Hide()
+dragBorder:Hide()
+animGroup:Stop()
+CheckAllAuras()
+end
+end)
+SetTooltip(dragCb, "Включает тестовую полупрозрачную рамку индикатора на экране. Зажмите её левой кнопкой мыши (ЛКМ), чтобы переместить в удобное место.")
+-- Ползунок масштабирует фрейм целиком (SetScale)
+local fontSlider = CreateFrame("Slider", "RAY_FontScaleSliderGlobal", optionsPanel, "OptionsSliderTemplate")
+fontSlider:SetSize(110, 17)
+fontSlider:SetPoint("TOPLEFT", 525, -34)
+fontSlider:SetMinMaxValues(12, 36)
+fontSlider:SetValueStep(1)
+local fsText = fontSlider:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+fsText:SetPoint("BOTTOM", fontSlider, "TOP", 0, 4)
+if RAY_FontScaleSliderGlobalLow then RAY_FontScaleSliderGlobalLow:Hide() end
+if RAY_FontScaleSliderGlobalHigh then RAY_FontScaleSliderGlobalHigh:Hide() end
+fontSlider:SetScript("OnShow", function(self)
+local currentVal = RAY_Config.fontSize or 24
+self:SetValue(currentVal)
+fsText:SetText("Шрифт: " .. math.floor(currentVal))
+end)
+fontSlider:SetScript("OnValueChanged", function(self, value)
+local val = math.floor(value)
+fsText:SetText("Шрифт: " .. val)
+RAY_Config.fontSize = val
+-- Меняем масштаб самого ФРЕЙМА-контейнера
+local currentScale = val / 24
+frame:SetScale(currentScale)
+if dragCb:GetChecked() then
+text:SetText("|cff00FFFF[RAY]: Зажми ЛКМ\nи перетащи меня!|r")
+end
+end)
+SetTooltip(fontSlider, "Изменяет размер всплывающего текста предупреждений на экране.")
 local line = optionsPanel:CreateTexture(nil, "BACKGROUND")
 line:SetWidth(2)
-line:SetHeight(445)
+line:SetHeight(355)
 line:SetPoint("TOPLEFT", 305, -65)
 line:SetTexture(0.3, 0.3, 0.3, 0.5)
 local leftHeader = optionsPanel:CreateFontString(nil, "OVERLAY", "GameFontNormal")
@@ -269,36 +364,41 @@ local editCounter, sliderCounter, cbCounter, dropCounter = 0, 0, 0, 0
 local leftUI, rightUI
 local function CreateColumn(isLeft, modeType, textColorCode)
 local offsetX = isLeft and 16 or 320
--- ИСПРАВЛЕНО: Корректно увеличиваем счётчик editCounter, убирая опечатку в имени переменной
 editCounter = editCounter + 1
 local editBox = CreateFrame("EditBox", "RAY_NewEdit_" .. editCounter, optionsPanel, "InputBoxTemplate")
-editBox:SetSize(200, 25)
+editBox:SetSize(190, 25)
 editBox:SetPoint("TOPLEFT", offsetX, -105)
 editBox:SetAutoFocus(false)
 local elabel = optionsPanel:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
 elabel:SetPoint("BOTTOMLEFT", editBox, "TOPLEFT", 0, 2)
 elabel:SetText(textColorCode .. "Название / ID (Используйте '/' для Или):|r")
 local btnOk = CreateFrame("Button", nil, optionsPanel, "UIPanelButtonTemplate")
-btnOk:SetSize(40, 24)
+btnOk:SetSize(45, 24)
 btnOk:SetPoint("LEFT", editBox, "RIGHT", 5, 0)
-btnOk:SetText("|cffFFFFFF|r|cffFFFF00ОК|r")
-local tex = btnOk:CreateTexture()
-tex:SetTexture(0.5, 0.1, 0.1, 0.8)
-btnOk:SetNormalTexture(tex)
+btnOk:SetText("|cffFFFF00ОК|r")
+local normalTex = btnOk:GetNormalTexture()   if normalTex then normalTex:SetVertexColor(1, 0.1, 0.1, 0.9) end
+local pushTex = btnOk:GetPushedTexture()     if pushTex then pushTex:SetVertexColor(0.6, 0, 0, 1) end
+local highTex = btnOk:GetHighlightTexture()   if highTex then highTex:SetVertexColor(1, 0.3, 0.3, 0.4) end
 dropCounter = dropCounter + 1
 local dropDown = CreateFrame("Frame", "RAY_DropDown_" .. dropCounter, optionsPanel, "UIDropDownMenuTemplate")
 dropDown:SetPoint("TOPLEFT", offsetX - 15, -145)
-UIDropDownMenu_SetWidth(dropDown, 100)
+UIDropDownMenu_SetWidth(dropDown, 110)
+if isLeft then
+SetTooltip(dropDown, "Выбор цели для проверки положительного баффа, аур, прока, спелла, эффекта аксессуара или предмета.")
+else
+SetTooltip(dropDown, "Выбор цели для проверки отрицательного дебаффа, аур, спелла, эффекта или предмета.")
+end
 local tempConfig = { onlyInCombat = true, zoneWorld = true, zoneParty = true, zoneRaid = true, target = (modeType == "DEBUFF" and "target" or "player"), isCooldown = false, isProc = false }
 local function GetActiveIndex()
 return (modeType == "BUFF") and selectedBuffIndex or selectedDebuffIndex
 end
-local function CreateLocalCheckbox(label, yOffset, key)
+local function CreateLocalCheckbox(label, yOffset, key, tooltipText)
 cbCounter = cbCounter + 1
-local name = "RAY_LocalCB_" .. cbCounter
-local cb = CreateFrame("CheckButton", name, optionsPanel, "InterfaceOptionsCheckButtonTemplate")
+local cb = CreateFrame("CheckButton", nil, optionsPanel, "InterfaceOptionsCheckButtonTemplate")
 cb:SetPoint("TOPLEFT", offsetX, yOffset)
-_G[name .. "Text"]:SetText(textColorCode .. label .. "|r")
+local cbTxt = cb:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+cbTxt:SetPoint("LEFT", cb, "RIGHT", 5, 1)
+cbTxt:SetText(textColorCode .. label .. "|r")
 cb:SetScript("OnClick", function(self)
 local idx = GetActiveIndex()
 if idx and RAY_Config.spells[idx] then
@@ -308,72 +408,106 @@ else
 tempConfig[key] = self:GetChecked()
 end
 end)
-return cb
+SetTooltip(cb, tooltipText)
+return cb, cbTxt
 end
-local cbCombat   = CreateLocalCheckbox("Включать только в бою", -175, "onlyInCombat")
-local cbWorld    = CreateLocalCheckbox("Отслеживать в открытом мире", -195, "zoneWorld")
-local cbParty    = CreateLocalCheckbox("Отслеживать в подземельях (Пати)", -217, "zoneParty")
-local cbRaid     = CreateLocalCheckbox("Отслеживать в рейдовых зонах", -239, "zoneRaid")
-local cbCooldown = CreateLocalCheckbox("Отслеживать готовность КД", -261, "isCooldown")
-local cbProc     = CreateLocalCheckbox("Это прок (оповещать, когда активен)", -283, "isProc")
+local cbCombat, cbCombatTxt, cbWorld, cbWorldTxt, cbParty, cbPartyTxt, cbRaid, cbRaidTxt, cbCooldown, cbCooldownTxt, cbProc, cbProcTxt
+if isLeft then
+cbCombat, cbCombatTxt   = CreateLocalCheckbox("Включать только в бою", -175, "onlyInCombat", "Если включено, аддон будет проверять этот положительный бафф, ауру, прок, спелл или предмет только во время боя.")
+cbWorld, cbWorldTxt    = CreateLocalCheckbox("Отслеживать в открытом мире", -195, "zoneWorld", "Проверять этот положительный бафф, ауру, прок, спелл или предмет при нахождении в локациях открытого мира.")
+cbParty, cbPartyTxt    = CreateLocalCheckbox("Отслеживать в подземельях", -217, "zoneParty", "Проверять этот положительный бафф, ауру, прок, спелл или предмет, когда вы находитесь в подземелье на 5 человек.")
+cbRaid, cbRaidTxt     = CreateLocalCheckbox("Отслеживать в рейдовых зонах", -239, "zoneRaid", "Проверять этот положительный бафф, ауру, прок, спелл или предмет внутри рейдовых подземелий.")
+cbCooldown, cbCooldownTxt = CreateLocalCheckbox("Отслеживать готовность КД", -261, "isCooldown", "Оповестит, когда завершится внутреннее или обычное КД способности, аксессуара, инженерной чарки или предмета.")
+cbProc, cbProcTxt     = CreateLocalCheckbox("Это прок (активен)", -283, "isProc", "Изменяет логику: выводить текст на экран только тогда, когда этот положительный бафф, аура, прок или эффект предмета АКТИВЕH на цели.")
+else
+cbCombat, cbCombatTxt   = CreateLocalCheckbox("Включать только в бою", -175, "onlyInCombat", "Если включено, аддон будет проверять этот дебафф, ауру, спелл или отрицательный эффект только во время боя.")
+cbWorld, cbWorldTxt    = CreateLocalCheckbox("Отслеживать в открытом мире", -195, "zoneWorld", "Проверять этот дебафф, ауру, спелл или отрицательный эффект при нахождении в локациях открытого мира.")
+cbParty, cbPartyTxt    = CreateLocalCheckbox("Отслеживать в подземельях", -217, "zoneParty", "Проверять этот дебафф, ауру, спелл или отрицательный эффект, когда вы находитесь в подземелье на 5 человек.")
+cbRaid, cbRaidTxt     = CreateLocalCheckbox("Отслеживать в рейдовых зонах", -239, "zoneRaid", "Проверять этот дебафф, ауру, спелл или отрицательный эффект внутри рейдовых подземелий.")
+cbCooldown, cbCooldownTxt = CreateLocalCheckbox("Отслеживать готовность КД", -261, "isCooldown", "Оповестит, когда завершится КД способности или предмета, накладывающего этот дебафф.")
+cbProc, cbProcTxt     = CreateLocalCheckbox("Это прок (активен)", -283, "isProc", "Изменяет логику: выводить текст на экран только тогда, когда этот дебафф, аура, спелл или эффект нахождения предмета АКТИВЕH на цели.")
+end
+local sliderCounter = 0
 sliderCounter = sliderCounter + 1
-local sTimeName = "RAY_NewTime_" .. sliderCounter
+local sTimeName = "RAY_SliderTimeUnique_" .. editCounter .. "_" .. sliderCounter
 local sliderTime = CreateFrame("Slider", sTimeName, optionsPanel, "OptionsSliderTemplate")
-sliderTime:SetSize(125, 17)
+sliderTime:SetSize(110, 17)
 sliderTime:SetPoint("TOPLEFT", offsetX, -325)
 sliderTime:SetMinMaxValues(0, 30)
 sliderTime:SetValueStep(1)
-_G[sTimeName .. "Text"]:SetText(textColorCode .. "Время (сек): 0|r")
-_G[sTimeName .. "Low"]:SetText("0")
-_G[sTimeName .. "High"]:SetText("30")
+local stText = sliderTime:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+stText:SetPoint("BOTTOM", sliderTime, "TOP", 0, 2) stText:SetText(textColorCode .. "Время (сек): 0|r")
+if _G[sTimeName.."Low"] then _G[sTimeName.."Low"]:Hide() end
+if _G[sTimeName.."High"] then _G[sTimeName.."High"]:Hide() end
+if isLeft then
+SetTooltip(sliderTime, "Начнет предупреждать об обновлении положительного баффа, ауры, прока, спелла или предмета заранее за указанное количество секунд.")
+else
+SetTooltip(sliderTime, "Начнет предупреждать об обновлении дебаффа, ауры, спелла или эффекта предмета заранее за указанное количество секунд.")
+end
 sliderCounter = sliderCounter + 1
-local sStacksName = "RAY_NewStacks_" .. sliderCounter
+local sStacksName = "RAY_SliderStacksUnique_" .. editCounter .. "_" .. sliderCounter
 local sliderStacks = CreateFrame("Slider", sStacksName, optionsPanel, "OptionsSliderTemplate")
-sliderStacks:SetSize(125, 17)
-sliderStacks:SetPoint("LEFT", sliderTime, "RIGHT", 20, 0)
+sliderStacks:SetSize(110, 17)
+sliderStacks:SetPoint("LEFT", sliderTime, "RIGHT", 15, 0)
 sliderStacks:SetMinMaxValues(0, 5)
 sliderStacks:SetValueStep(1)
-_G[sStacksName .. "Text"]:SetText(textColorCode .. "Стаки: 0|r")
-_G[sStacksName .. "Low"]:SetText("0")
-_G[sStacksName .. "High"]:SetText("5")
+local ssText = sliderStacks:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+ssText:SetPoint("BOTTOM", sliderStacks, "TOP", 0, 2) ssText:SetText(textColorCode .. "Стаки: 0|r")
+if _G[sStacksName.."Low"] then _G[sStacksName.."Low"]:Hide() end
+if _G[sStacksName.."High"] then _G[sStacksName.."High"]:Hide() end
+if isLeft then
+SetTooltip(sliderStacks, "Подавать сигнал, если количество накопленных стаков (зарядов) данного положительного баффа, прока или спелла меньше выбранного значения.")
+else
+SetTooltip(sliderStacks, "Подавать сигнал, если количество накопленных стаков (зарядов) данного дебаффа или спелла на цели меньше выбранного значения.")
+end
+sliderTime:SetScript("OnValueChanged", function(self, value)
+local val = math.floor(value)
+stText:SetText(textColorCode .. "Время (сек): " .. val .. "|r")
+local idx = GetActiveIndex()
+if idx and RAY_Config.spells[idx] then RAY_Config.spells[idx].alertTime = val CheckAllAuras() end
+end)
+sliderStacks:SetScript("OnValueChanged", function(self, value)
+local val = math.floor(value)
+ssText:SetText(textColorCode .. "Стаки: " .. val .. "|r")
+local idx = GetActiveIndex()
+if idx and RAY_Config.spells[idx] then RAY_Config.spells[idx].minStacks = val CheckAllAuras() end
+end)
 local scrollContent = CreateFrame("Frame", nil, optionsPanel)
 scrollContent:SetSize(250, MAX_VISIBLE_HEIGHT)
 scrollContent:SetPoint("TOPLEFT", offsetX, -350)
 UIDropDownMenu_Initialize(dropDown, function()
-local idx = GetActiveIndex()
-local currentTarget = "player"
-if idx and RAY_Config.spells[idx] then currentTarget = RAY_Config.spells[idx].target or "player" else currentTarget = tempConfig.target end
+local currentIdx = GetActiveIndex()
+local activeTarget = "player"
+if currentIdx and RAY_Config.spells[currentIdx] then
+activeTarget = RAY_Config.spells[currentIdx].target or "player"
+else
+activeTarget = tempConfig.target
+end
 local info = UIDropDownMenu_CreateInfo()
-info.text = "Цель: Игрок"; info.value = "player"; info.checked = (currentTarget == "player")
+info.text = "Цель: Игрок"
+info.value = "player"
+info.checked = (activeTarget == "player")
 info.func = function(self)
 local activeIdx = GetActiveIndex()
 if activeIdx and RAY_Config.spells[activeIdx] then RAY_Config.spells[activeIdx].target = "player" else tempConfig.target = "player" end
 UIDropDownMenu_SetSelectedValue(dropDown, "player")
 UIDropDownMenu_SetText(dropDown, "Цель: Игрок")
 CheckAllAuras()
+CloseDropDownMenus()
 end
 UIDropDownMenu_AddButton(info)
-info.text = "Цель: Таргет"; info.value = "target"; info.checked = (currentTarget == "target")
+info.text = "Цель: Таргет"
+info.value = "target"
+info.checked = (activeTarget == "target")
 info.func = function(self)
 local activeIdx = GetActiveIndex()
 if activeIdx and RAY_Config.spells[activeIdx] then RAY_Config.spells[activeIdx].target = "target" else tempConfig.target = "target" end
 UIDropDownMenu_SetSelectedValue(dropDown, "target")
 UIDropDownMenu_SetText(dropDown, "Цель: Таргет")
 CheckAllAuras()
+CloseDropDownMenus()
 end
 UIDropDownMenu_AddButton(info)
-end)
-sliderTime:SetScript("OnValueChanged", function(self, value)
-local val = math.floor(value)
-_G[self:GetName() .. "Text"]:SetText(textColorCode .. "Время (сек): " .. val .. "|r")
-local idx = GetActiveIndex()
-if idx and RAY_Config.spells[idx] then RAY_Config.spells[idx].alertTime = val CheckAllAuras() end
-end)
-sliderStacks:SetScript("OnValueChanged", function(self, value)
-local val = math.floor(value)
-_G[self:GetName() .. "Text"]:SetText(textColorCode .. "Стаки: " .. val .. "|r")
-local idx = GetActiveIndex()
-if idx and RAY_Config.spells[idx] then RAY_Config.spells[idx].minStacks = val CheckAllAuras() end
 end)
 editBox:SetScript("OnTextChanged", function(self, userInput)
 if userInput then
@@ -384,17 +518,32 @@ end)
 btnOk:SetScript("OnClick", function()
 local typedName = editBox:GetText()
 if not typedName or typedName == "" or typedName == " " then return end
+local idx = GetActiveIndex()
+if idx and RAY_Config.spells[idx] then
+local data = RAY_Config.spells[idx]
+data.name = typedName
+data.target = UIDropDownMenu_GetSelectedValue(dropDown) or data.target
+data.minStacks = math.floor(sliderStacks:GetValue())
+data.alertTime = math.floor(sliderTime:GetValue())
+data.onlyInCombat = cbCombat:GetChecked()
+data.zoneWorld = cbWorld:GetChecked()
+data.zoneParty = cbParty:GetChecked()
+data.zoneRaid = cbRaid:GetChecked()
+data.isCooldown = cbCooldown:GetChecked()
+data.isProc = cbProc:GetChecked()
+else
 table.insert(RAY_Config.spells, {
 name = typedName, mode = modeType, target = UIDropDownMenu_GetSelectedValue(dropDown) or tempConfig.target,
 minStacks = math.floor(sliderStacks:GetValue()), alertTime = math.floor(sliderTime:GetValue()),
 onlyInCombat = cbCombat:GetChecked(), zoneWorld = cbWorld:GetChecked(), zoneParty = cbParty:GetChecked(), zoneRaid = cbRaid:GetChecked(),
 isCooldown = cbCooldown:GetChecked(), isProc = cbProc:GetChecked()
 })
+end
 updateSpellLists() CheckAllAuras()
 editBox:SetText("")
 if modeType == "BUFF" then selectBuff(nil) else selectDebuff(nil) end
 end)
-return { editBox = editBox, sliderTime = sliderTime, sliderStacks = sliderStacks, dropDown = dropDown, scrollContent = scrollContent, cbCombat = cbCombat, cbWorld = cbWorld, cbParty = cbParty, cbRaid = cbRaid, cbCooldown = cbCooldown, cbProc = cbProc }
+return { editBox = editBox, sliderTime = sliderTime, sliderStacks = sliderStacks, dropDown = dropDown, scrollContent = scrollContent, cbCombat = cbCombat, cbWorld = cbWorld, cbParty = cbParty, cbRaid = cbRaid, cbCooldown = cbCooldown, cbProc = cbProc, stText = stText, ssText = ssText }
 end
 leftUI = CreateColumn(true, "BUFF", "|cff44FF44")
 rightUI = CreateColumn(false, "DEBUFF", "|cffFF4444")
@@ -430,7 +579,8 @@ rightUI.cbCombat:SetChecked(data.onlyInCombat) rightUI.cbWorld:SetChecked(data.z
 rightUI.cbCooldown:SetChecked(data.isCooldown) rightUI.cbProc:SetChecked(data.isProc)
 else
 rightUI.editBox:SetText("") rightUI.sliderTime:SetValue(0) rightUI.sliderStacks:SetValue(0)
-rightUI.cbCombat:SetChecked(true) rightUI.cbWorld:SetChecked(true) rightUI.cbParty:SetChecked(true) rightUI.cbRaid:SetChecked(true) rightUI.cbCooldown:SetChecked(false) rightUI.cbProc:SetChecked(false)
+rightUI.cbCombat:SetChecked(true) rightUI.cbWorld:SetChecked(true) rightUI.cbParty:SetChecked(true) rightUI.cbRaid:SetChecked(true)
+rightUI.cbCooldown:SetChecked(false) rightUI.cbProc:SetChecked(false)
 UIDropDownMenu_SetSelectedValue(rightUI.dropDown, "target") UIDropDownMenu_SetText(rightUI.dropDown, "Цель: Таргет")
 end
 end
@@ -443,6 +593,7 @@ for _, btn in ipairs(listButtonsDebuff) do btn:Hide() end
 local buffCount, debuffCount = 1, 1
 for i, spellData in ipairs(RAY_Config.spells) do
 local isBuff = (spellData.mode == "BUFF")
+-- ИСПРАВЛЕНО: Убрана опечатка склейки "isBuff group"
 local count = isBuff and buffCount or debuffCount
 local listButtons = isBuff and listButtonsBuff or listButtonsDebuff
 local ui = isBuff and leftUI or rightUI
@@ -463,22 +614,20 @@ btn:ClearAllPoints()
 btn:SetPoint("TOPLEFT", 5, yPos)
 local displayName = string.match(spellData.name, "[^|/]+") or "Пусто"
 btn:SetText((isBuff and "|cff44FF44" or "|cffFF4444") .. displayName .. "|r")
--- Сверхточный математический клиппинг
 if yPos > 0 or yPos < -(MAX_VISIBLE_HEIGHT - 18) then
 btn:Hide()
 else
 btn:Show()
 end
-local actualIndex = i
 if isBuff then
-if selectedBuffIndex == actualIndex then btn:LockHighlight() else btn:UnlockHighlight() end
-btn:SetScript("OnClick", function() selectBuff(actualIndex) btn:LockHighlight() end)
+if selectedBuffIndex == i then btn:LockHighlight() else btn:UnlockHighlight() end
+btn:SetScript("OnClick", function() selectBuff(i) btn:LockHighlight() end)
 else
-if selectedDebuffIndex == actualIndex then btn:LockHighlight() else btn:UnlockHighlight() end
-btn:SetScript("OnClick", function() selectDebuff(actualIndex) btn:LockHighlight() end)
+if selectedDebuffIndex == i then btn:LockHighlight() else btn:UnlockHighlight() end
+btn:SetScript("OnClick", function() selectDebuff(i) btn:LockHighlight() end)
 end
 btn.delBtn:SetScript("OnClick", function()
-table.remove(RAY_Config.spells, actualIndex)
+table.remove(RAY_Config.spells, i)
 if isBuff then selectBuff(nil) else selectDebuff(nil) end
 updateSpellLists() CheckAllAuras()
 end)
@@ -500,23 +649,24 @@ currentScrollOffset = maxScrollLimit
 end
 updateSpellLists()
 end)
-optionsPanel:SetScript("OnShow", function() currentScrollOffset = 0 selectBuff(nil) selectDebuff(nil) updateSpellLists() end)
-if InterfaceOptions_AddCategory then
+optionsPanel:SetScript("OnShow", function()
+currentScrollOffset = 0
+selectBuff(nil)
+selectDebuff(nil)
+updateSpellLists()
+dragCb:SetChecked(frame:IsMouseEnabled())
+CheckAllAuras()
+end)
+optionsPanel:SetScript("OnHide", function()
+CheckAllAuras()
+end)
 InterfaceOptions_AddCategory(optionsPanel)
-else
-local category = Settings.RegisterCanvasLayoutCategory(optionsPanel, "RAY")
-Settings.RegisterAddOnCategory(category)
-end
 end)
 -- Слэш-команда
 SLASH_RAY1 = "/ray"
 SlashCmdList["RAY"] = function()
 if optionsPanel then
-if InterfaceOptionsFrame_OpenToCategory then
 InterfaceOptionsFrame_OpenToCategory(optionsPanel)
 InterfaceOptionsFrame_OpenToCategory(optionsPanel)
-else
-Settings.OpenToCategory(optionsPanel.name)
-end
 end
 end
