@@ -1,9 +1,10 @@
 -- =========================================================================
--- 1. ИНИЦИАЛИЗАЦИЯ И СОХРАНЕНИЕ НАСТРОЕК
+-- 1. ИНИЦИАЛИЗАЦИЯ И РАЗДЕЛЬНОЕ СОХРАНЕНИЕ НАСТРОЕК ДЛЯ КАЖДОГО ПЕРСОНАЖА
 -- =========================================================================
 local addonName = "RAY"
 local RAY_EventFrame = CreateFrame("Frame")
 
+-- Стандартные настройки по умолчанию (создаются, если персонаж зашел в игру впервые)
 local defaultSettings = {
     spells = {
         { name = "Печать праведности/Печать повиновения", mode = "BUFF", target = "player", minStacks = 0, alertTime = 5, onlyInCombat = true, zoneWorld = true, zoneParty = true, zoneRaid = true, isCooldown = false, isProc = false },
@@ -20,10 +21,16 @@ local listButtonsBuff = {}
 local listButtonsDebuff = {}
 local updateSpellLists, selectBuff, selectDebuff, CheckAllAuras
 
+-- Переменная для хранения смещения кастомной невидимой прокрутки
+local currentScrollOffset = 0
+local totalContentHeight = 0
+local MAX_VISIBLE_HEIGHT = 115 -- Жесткая высота окна списков
+
 RAY_EventFrame:RegisterEvent("ADDON_LOADED")
 RAY_EventFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
 RAY_EventFrame:SetScript("OnEvent", function(self, event, arg1)
     if event == "ADDON_LOADED" and arg1 == addonName then
+        -- Благодаря SavedVariablesPerCharacter, переменная RAY_Config теперь уникальна для каждого чара
         if not RAY_Config then
             RAY_Config = defaultSettings
         else
@@ -190,11 +197,11 @@ CheckAllAuras = function()
                         local alertLine = ""
                         if spellData.mode == "DEBUFF" then
                             alertLine = "RAY: Наложи дебафф [" .. displayName .. "]" .. customReason
-                        else
-                            if spellData.isProc then
-                                alertLine = "RAY: Прок! Срочно жми [" .. displayName .. "]" .. customReason
-                            elseif spellData.isCooldown then
-                                alertLine = "RAY: Готово! Прожми [" .. displayName .. "]" .. customReason
+else
+if spellData.isProc then
+alertLine = "RAY: Прок! Срочно жми [" .. displayName .. "]" .. customReason
+elseif spellData.isCooldown then
+alertLine = "RAY: Готово! Прожми [" .. displayName .. "]" .. customReason
 else
 alertLine = "RAY: Обнови бафф [" .. displayName .. "]" .. customReason
 end
@@ -228,7 +235,6 @@ engineEvents:SetScript("OnEvent", function(self, event, unit)
 if event == "UNIT_AURA" and unit ~= "player" and unit ~= "target" then return end
 CheckAllAuras()
 end)
--- Легкий фоновый тикер обновлений боевой части
 local ticker = CreateFrame("Frame")
 local tTime = 0
 ticker:SetScript("OnUpdate", function(self, elapsed)
@@ -236,7 +242,7 @@ tTime = tTime + elapsed
 if tTime >= 0.4 then tTime = 0 CheckAllAuras() end
 end)
 -- =========================================================================
--- 4. ГРАФИЧЕСКИЙ ИНТЕРФЕЙС НАСТРОЕК (ПРОИЗВОДИТЕЛЬНОСТЬ + ИСПРАВЛЕННЫЙ СКРОЛЛ)
+-- 4. ГРАФИЧЕСКИЙ ИНТЕРФЕЙС НАСТРОЕК (БЕЗОПАСНАЯ НЕВИДИМАЯ ПРОКРУТКА)
 -- =========================================================================
 local shortcutFrame = CreateFrame("Frame")
 shortcutFrame:RegisterEvent("PLAYER_LOGIN")
@@ -263,12 +269,12 @@ leftHeader:SetText("|cff44FF44БАФФЫ И ПРОКИ|r")
 local rightHeader = optionsPanel:CreateFontString(nil, "OVERLAY", "GameFontNormal")
 rightHeader:SetPoint("TOPLEFT", 320, -65)
 rightHeader:SetText("|cffFF4444ДЕБАФФЫ|r")
-local editCounter, sliderCounter, scrollCounter, cbCounter, dropCounter = 0, 0, 0, 0, 0
+local editCounter, sliderCounter, cbCounter, dropCounter = 0, 0, 0, 0
 local leftUI, rightUI
 local function CreateColumn(isLeft, modeType, textColorCode)
 local offsetX = isLeft and 16 or 320
-editCounter = editCounter + 1
-local editBox = CreateFrame("EditBox", "RAY_NewEdit_" .. editCounter, optionsPanel, "InputBoxTemplate")
+editBoxCounter = editCounter + 1
+local editBox = CreateFrame("EditBox", "RAY_NewEdit_" .. editBoxCounter, optionsPanel, "InputBoxTemplate")
 editBox:SetSize(200, 25)
 editBox:SetPoint("TOPLEFT", offsetX, -105)
 editBox:SetAutoFocus(false)
@@ -333,13 +339,9 @@ sliderStacks:SetValueStep(1)
 _G[sStacksName .. "Text"]:SetText(textColorCode .. "Стаки: 0|r")
 _G[sStacksName .. "Low"]:SetText("0")
 _G[sStacksName .. "High"]:SetText("5")
-scrollCounter = scrollCounter + 1
-local scrollFrame = CreateFrame("ScrollFrame", "RAY_NewScroll_" .. scrollCounter, optionsPanel, "UIPanelScrollFrameTemplate")
-scrollFrame:SetSize(250, 115)
-scrollFrame:SetPoint("TOPLEFT", offsetX, -350)
-local scrollContent = CreateFrame("Frame", nil, scrollFrame)
-scrollContent:SetSize(250, 1) -- Высота будет рассчитываться динамически в updateSpellLists
-scrollFrame:SetScrollChild(scrollContent)
+local scrollContent = CreateFrame("Frame", nil, optionsPanel)
+scrollContent:SetSize(250, MAX_VISIBLE_HEIGHT)
+scrollContent:SetPoint("TOPLEFT", offsetX, -350)
 UIDropDownMenu_Initialize(dropDown, function()
 local idx = GetActiveIndex()
 local currentTarget = "player"
@@ -435,6 +437,9 @@ rightUI.cbCombat:SetChecked(true) rightUI.cbWorld:SetChecked(true) rightUI.cbPar
 UIDropDownMenu_SetSelectedValue(rightUI.dropDown, "target") UIDropDownMenu_SetText(rightUI.dropDown, "Цель: Таргет")
 end
 end
+-- =========================================================================
+-- 5. ОБНОВЛЕННЫЙ РЕНДЕР СПИСКОВ С НЕВИДИМЫМ КЛИППИНГОМ КНОПОК
+-- =========================================================================
 updateSpellLists = function()
 for _, btn in ipairs(listButtonsBuff) do btn:Hide() end
 for _, btn in ipairs(listButtonsDebuff) do btn:Hide() end
@@ -447,19 +452,26 @@ local ui = isBuff and leftUI or rightUI
 local btn = listButtons[count]
 if not btn then
 btn = CreateFrame("Button", nil, ui.scrollContent)
-btn:SetSize(210, 20)
+btn:SetSize(230, 20)
 btn:SetNormalFontObject("GameFontNormal")
 btn:SetHighlightTexture("Interface\Buttons\UI-Listbox-Highlight")
 local delBtn = CreateFrame("Button", nil, btn, "UIPanelCloseButton")
-delBtn:SetSize(18, 18) delBtn:SetPoint("RIGHT", btn, "RIGHT", 15, 0)
+delBtn:SetSize(18, 18) delBtn:SetPoint("RIGHT", btn, "RIGHT", 0, 0)
 delBtn:GetNormalTexture():SetTexCoord(0, 1, 0, 1)
 btn.delBtn = delBtn
 listButtons[count] = btn
 end
-btn:SetPoint("TOPLEFT", 5, -((count - 1) * 22))
+local yPos = -((count - 1) * 22) + currentScrollOffset
+btn:ClearAllPoints()
+btn:SetPoint("TOPLEFT", 5, yPos)
 local displayName = string.match(spellData.name, "[^|/]+") or "Пусто"
 btn:SetText((isBuff and "|cff44FF44" or "|cffFF4444") .. displayName .. "|r")
+-- Сверхточный математический клиппинг
+if yPos > 0 or yPos < -(MAX_VISIBLE_HEIGHT - 18) then
+btn:Hide()
+else
 btn:Show()
+end
 local actualIndex = i
 if isBuff then
 if selectedBuffIndex == actualIndex then btn:LockHighlight() else btn:UnlockHighlight() end
@@ -475,12 +487,23 @@ updateSpellLists() CheckAllAuras()
 end)
 if isBuff then buffCount = buffCount + 1 else debuffCount = debuffCount + 1 end
 end
--- ИСПРАВЛЕНИЕ СКРОЛЛА: Динамически пересчитываем высоту контента
--- Теперь ползунок скроллбара уменьшается/увеличивается под честный размер списка
-leftUI.scrollContent:SetHeight(math.max(1, (buffCount - 1) * 22))
-rightUI.scrollContent:SetHeight(math.max(1, (debuffCount - 1) * 22))
+local maxItems = math.max(buffCount - 1, debuffCount - 1)
+totalContentHeight = maxItems * 22
 end
-optionsPanel:SetScript("OnShow", function() selectBuff(nil) selectDebuff(nil) updateSpellLists() end)
+optionsPanel:EnableMouseWheel(true)
+optionsPanel:SetScript("OnMouseWheel", function(self, delta)
+local scrollStep = 22
+currentScrollOffset = currentScrollOffset - (delta * scrollStep)
+local maxScrollLimit = totalContentHeight - MAX_VISIBLE_HEIGHT
+if maxScrollLimit < 0 then maxScrollLimit = 0 end
+if currentScrollOffset < 0 then
+currentScrollOffset = 0
+elseif currentScrollOffset > maxScrollLimit then
+currentScrollOffset = maxScrollLimit
+end
+updateSpellLists()
+end)
+optionsPanel:SetScript("OnShow", function() currentScrollOffset = 0 selectBuff(nil) selectDebuff(nil) updateSpellLists() end)
 if InterfaceOptions_AddCategory then
 InterfaceOptions_AddCategory(optionsPanel)
 else
