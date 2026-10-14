@@ -16,6 +16,7 @@ local defaultSettings = {
     specSettings = {}
 }
 
+-- Инициализация структуры веток талантов
 defaultSettings.specSettings = { sets = {}, buffs = {}, icds = {} }
 defaultSettings.specSettings = { sets = {}, buffs = {}, icds = {} }
 
@@ -40,7 +41,11 @@ RAY_EventFrame:SetScript("OnEvent", function(self, event, arg1)
             end
             if not RAY_Config.specSettings then 
                 RAY_Config.specSettings = {}
+            end
+            if not RAY_Config.specSettings then
                 RAY_Config.specSettings = { sets = {}, buffs = {}, icds = {} }
+            end
+            if not RAY_Config.specSettings then
                 RAY_Config.specSettings = { sets = {}, buffs = {}, icds = {} }
             end
         end
@@ -124,7 +129,6 @@ local function CheckEquipmentSetFull(setName)
     return "OK"
 end
 
--- ИСПРАВЛЕHО: Точный перевод миллисекунд Blizzard в секунды без отрицательных значений
 local function CheckWeaponEnchant(enchantName)
     local hasMain, mainExpiration, _, _, hasOff, offExpiration, _, _ = GetWeaponEnchantInfo()
     local nameLower = enchantName:lower()
@@ -204,22 +208,28 @@ CheckAllAuras = function()
     
     if RAY_Config.specSettings and RAY_Config.specSettings[currentSpec] then
         local configData = RAY_Config.specSettings[currentSpec]
-        for _, set in ipairs(configData.sets or {}) do
-            if set.name and set.name ~= "" and CheckSubRules(set, inCombat, currentZone) then
-                local status = CheckEquipmentSetFull(set.name)
+        if configData.sets then
+            for _, set in ipairs(configData.sets) do
+if set.name and set.name ~= "" and CheckSubRules(set, inCombat, currentZone) then
+local status = CheckEquipmentSetFull(set.name)
 if status == "NOT_FOUND" then uniqueAlerts["RAY: Комплект [" .. set.name .. "] не найден!"] = true
 elseif status == "PARTIAL" then uniqueAlerts["RAY: Комплект [" .. set.name .. "] не полон!"] = true end
 end
 end
-for _, buff in ipairs(configData.buffs or {}) do
+end
+if configData.buffs then
+for _, buff in ipairs(configData.buffs) do
 if buff.name and buff.name ~= "" and CheckSubRules(buff, inCombat, currentZone) and not CheckAuraGroup("player", buff.name, "HELPFUL", false, false) then
 uniqueAlerts["RAY: Включи [" .. buff.name .. "]!"] = true
 end
 end
-for _, data in ipairs(configData.icds or {}) do
+end
+if configData.icds then
+for _, data in ipairs(configData.icds) do
 if data.name and data.name ~= "" and CheckSubRules(data, inCombat, currentZone) then
 local endTime = activeICDTimers[data.name:lower()]
 if endTime and endTime > curTime then uniqueAlerts["RAY: КД " .. data.name .. " (" .. math.ceil(endTime - curTime) .. " сек)"] = true end
+end
 end
 end
 end
@@ -235,7 +245,6 @@ local userAlertTime = tonumber(spellData.alertTime) or 0
 if spellData.isProc then
 if isActive then
 if limitStacks == 0 or (stacks >= limitStacks) then
--- ИСПРАВЛЕHО: Если выставлено время, прок горит только когда оставшееся время МЕHЬШЕ порога
 if userAlertTime == 0 or (timeLeft <= userAlertTime) then
 needAlert = true
 local prefix = (spellData.isCombo) and " КП" or " ст"
@@ -251,7 +260,6 @@ else
 if not isActive then
 needAlert = true
 else
--- ИСПРАВЛЕHО: Напоминание баффов загорается, если до конца осталось меньше секунд, чем на бегунке
 if limitStacks > 0 and (stacks <= limitStacks) then
 needAlert = true
 local prefix = (spellData.isCombo) and " КП" or " ст"
@@ -307,10 +315,15 @@ end
 local shortcutFrame = CreateFrame("Frame") 
 shortcutFrame:RegisterEvent("PLAYER_LOGIN")
 shortcutFrame:SetScript("OnEvent", function()
-    -- 4.1 СОЗДАНИЕ СТРАНИЦЫ №1 (ГЛАВНАЯ С ПРОКРУТКОЙ)
+    -- ИСПРАВЛЕHО: Родительские панели объявлены в самом верху, чтобы функции ниже их видели
     optionsPanel = CreateFrame("Frame", "RAY_OptionsPanel", UIParent) 
     optionsPanel.name = "RAY"
     
+    subOptionsPanel = CreateFrame("Frame", "RAY_SubOptionsPanel", optionsPanel)
+    subOptionsPanel.name = "Спеки и Комплекты" 
+    subOptionsPanel.parent = "RAY"
+
+    -- 4.1 НАСТРОЙКА СТРАНИЦЫ №1 (ГЛАВНАЯ С ПРОКРУТКОЙ)
     local title = optionsPanel:CreateFontString(nil, "OVERLAY", "GameFontNormal") 
     title:SetPoint("TOPLEFT", 16, -14) 
     title:SetText("|cff00FFFFНастройки модификации RAY (Remember About Yourself)|r")
@@ -326,8 +339,7 @@ shortcutFrame:SetScript("OnEvent", function()
     local dragCb = CreateFrame("CheckButton", nil, optionsPanel, "InterfaceOptionsCheckButtonTemplate") 
     dragCb:SetPoint("TOPLEFT", 415, -34)
     local dragCbText = dragCb:CreateFontString(nil, "OVERLAY", "GameFontNormal") 
-    dragCbText:SetPoint("LEFT", dragCb, "RIGHT", 5, 1) 
-    dragCbText:SetText("|cffFFFF00Move|r")
+    dragCbText:SetPoint("LEFT", dragCb, "RIGHT", 5, 1) dragCbText:SetText("|cffFFFF00Move|r")
     dragCb:SetScript("OnClick", function(self) 
         if self:GetChecked() then frame:EnableMouse(true) dragBg:Show() dragBorder:Show() text:SetText("|cff00FFFF[RAY]: Зажми ЛКМ\nи перетащи меня!|r") if not frame:IsShown() then frame:Show() animGroup:Play() end 
         else frame:EnableMouse(false) dragBg:Hide() dragBorder:Hide() animGroup:Stop() CheckAllAuras() end 
@@ -345,7 +357,6 @@ shortcutFrame:SetScript("OnEvent", function()
     local mainChild = CreateFrame("Frame", nil, mainScroll) 
     mainChild:SetSize(580, 920) mainScroll:SetScrollChild(mainChild)
 
-    -- ИСПРАВЛЕHО: Сетка раздвинута, линия смещена влево на 245 для идеальной симметрии без наложений
     local subLine = mainChild:CreateTexture(nil, "BACKGROUND") 
     subLine:SetWidth(2) subLine:SetHeight(880) subLine:SetPoint("TOPLEFT", 245, 0) subLine:SetTexture(0.3, 0.3, 0.3, 0.5)
     
@@ -391,12 +402,11 @@ shortcutFrame:SetScript("OnEvent", function()
         local cbRaid     = CreateLocalCheckbox("Отслеживать в рейдовых зонах", 151, "zoneRaid", "Проверять в рейдах.")
         local cbCooldown = CreateLocalCheckbox("Отслеживать готовность КД", 173, "isCooldown", "Оповестит, когда способность выйдет из КД.")
         local cbProc     = CreateLocalCheckbox("Это прок (активен порог стаков)", 195, "isProc", "Включает логику накопления стаков (выведет уведомление при >= порога).")
-        local cbCombo    = CreateLocalCheckbox("Это серия приёмов (комбо-поинты)", 217, "isCombo", "Включите для отслеживания КП разбойника/друила. Серия сработает при достижении порога стаков.")
+        local cbCombo    = CreateLocalCheckbox("Это серия приёмов (комбо-поинты)", 217, "isCombo", "Включите для отслеживания КП разбойника/друида. Серия сработает при достижении порога стаков.")
         local cbWeapon   = CreateLocalCheckbox("Это чары на оружии (шаман/яды)", 239, "isWeaponText", "Включите для сканирования временных чар оружия (Неистовство ветра, Язык пламени, роговские яды). Пишите точное имя чарки!")
         
         local sTimeName = "RAY_SliderTimeUnique_" .. editCounter 
         local sliderTime = CreateFrame("Slider", sTimeName, mainChild, "OptionsSliderTemplate") 
-        -- ИСПРАВЛЕHО: Максимальный порог бегунка времени расширен до 60 секунд
         sliderTime:SetSize(105, 17) sliderTime:SetPoint("TOPLEFT", hOffset + 4, -280) sliderTime:SetMinMaxValues(0, 60) sliderTime:SetValueStep(1)
         local stText = sliderTime:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall") 
         stText:SetPoint("BOTTOM", sliderTime, "TOP", 0, 2) stText:SetText(textColorCode .. "Время (сек): 0|r")
@@ -455,10 +465,7 @@ btn.delBtn:SetScript("OnClick", function() table.remove(RAY_Config.spells, i) if
 if isBuff then bCount = bCount + 1 else dCount = dCount + 1 end
 end
 end
--- 4.2 СОЗДАНИЕ СТРАНИЦЫ №2 (СПЕКИ И КОМПЛЕКТЫ — СИНХРОННАЯ СВЯЗКА)
-subOptionsPanel = CreateFrame("Frame", "RAY_SubOptionsPanel", optionsPanel)
-subOptionsPanel.name = "Спеки и Комплекты"
-subOptionsPanel.parent = "RAY"
+-- 4.2 НАСТРОЙКА СТРАНИЦЫ №2 (СПЕКИ И КОМПЛЕКТЫ)
 local scrollFrame = CreateFrame("ScrollFrame", "RAY_SubScrollContainer", subOptionsPanel, "UIPanelScrollFrameTemplate")
 scrollFrame:SetPoint("TOPLEFT", 0, -85) scrollFrame:SetPoint("BOTTOMRIGHT", -26, 6)
 local scrollChild = CreateFrame("Frame", nil, scrollFrame)
@@ -497,7 +504,15 @@ local btnOk = CreateFrame("Button", nil, scrollChild, "UIPanelButtonTemplate") b
 local function CreateSubCheckbox(lbl, yOffset, key)
 local cb = CreateFrame("CheckButton", nil, scrollChild, "InterfaceOptionsCheckButtonTemplate") cb:SetPoint("TOPLEFT", hOffsetSub, yBlock - yOffset)
 local t = cb:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall") t:SetPoint("LEFT", cb, "RIGHT", 5, 1) t:SetText(headerColorCode .. lbl .. "|r")
-cb:SetScript("OnClick", function(self) local idx = activeIndices[storageKey] if idx and RAY_Config.specSettings[specNum][storageKey][idx] then RAY_Config.specSettings[specNum][storageKey][idx][key] = self:GetChecked() CheckAllAuras() end end)
+cb:SetScript("OnClick", function(self)
+if RAY_Config and RAY_Config.specSettings and RAY_Config.specSettings[specNum] and RAY_Config.specSettings[specNum][storageKey] then
+local idx = activeIndices[storageKey]
+if idx and RAY_Config.specSettings[specNum][storageKey][idx] then
+RAY_Config.specSettings[specNum][storageKey][idx][key] = self:GetChecked()
+CheckAllAuras()
+end
+end
+end)
 cb:SetChecked(true) return cb
 end
 local cbCombat = CreateSubCheckbox("Включать только в бою", 50, "onlyInCombat")
@@ -506,8 +521,9 @@ local cbParty  = CreateSubCheckbox("Отслеживать в подземель
 local cbRaid   = CreateSubCheckbox("Отслеживать в рейдовых зонах", 116, "zoneRaid")
 local listFrame = CreateFrame("Frame", nil, scrollChild) listFrame:SetSize(235, 85) listFrame:SetPoint("TOPLEFT", editBox, "TOPLEFT", 4, -145)
 if not listButtonsSub[specNum] then listButtonsSub[specNum] = {} end listButtonsSub[specNum][storageKey] = {}
-local function RefreshLocalSubList()
+RefreshLocalSubList = function()
 for _, b in ipairs(listButtonsSub[specNum][storageKey]) do b:Hide() end
+if not RAY_Config or not RAY_Config.specSettings or not RAY_Config.specSettings[specNum] then return end
 if not RAY_Config.specSettings[specNum][storageKey] then RAY_Config.specSettings[specNum][storageKey] = {} end
 for idx, data in ipairs(RAY_Config.specSettings[specNum][storageKey]) do
 local textStr = type(data) == "table" and ((data.name or "Ошибка") .. (isIcd and (" ("..(data.seconds or "45").."с)") or "")) or tostring(data)
@@ -540,11 +556,12 @@ BuildInputFieldBlock("Имя ПРОКА триньки / КД:", -545, "icds", "
 end
 CreateSubPageBlock(1, true, "|cff44FF44")
 CreateSubPageBlock(2, false, "|cffFF4444")
+-- ОФИЦИАЛЬHАЯ РЕГИСТРАЦИЯ КОМПОHЕНТОВ ПО ЦЕПОЧКЕ ВНУТРИ LOGIN БЛОКА
 InterfaceOptions_AddCategory(optionsPanel)
 InterfaceOptions_AddCategory(subOptionsPanel)
 updateSpellLists()
 end)
--- Слэш-команда быстрого доступа
+-- Слэш-команда
 SLASH_RAY1 = "/ray"
 SlashCmdList["RAY"] = function()
 if optionsPanel then
