@@ -97,7 +97,7 @@ local function SetTooltip(widget, uText)
 end
 
 -- =========================================================================
--- 3. УНИВЕРСАЛЬНЫЙ ДВИЖОК ПРОВЕРКИ СУЩНОСТЕЙ И ЖУРНАЛА БОЯ
+-- 3. УНИВЕРСАЛЬНЫЙ ДВИЖОК ПРОВЕРКИ СУЩНОСТЕЙ И СТЕК СИСТЕМЫ
 -- =========================================================================
 local function GetCurrentZoneType()
     local inInstance, instanceType = IsInInstance()
@@ -239,34 +239,43 @@ local target = spellData.target or "player"
 if target ~= "target" or (UnitExists("target") and not UnitIsDead("target")) then
 local filter = (spellData.mode == "DEBUFF") and "HARMFUL" or "HELPFUL"
 local isActive, stacks, timeLeft = CheckAuraGroup(target, spellData.name, filter, spellData.isCombo, spellData.isWeaponText)
+if not isActive and spellData.isProc then
+local isUsable, noMana = IsUsableSpell(spellData.name)
+if isUsable then
+isActive = true
+stacks = 0
+timeLeft = 9999
+end
+end
 local needAlert, customReason = false, ""
 local limitStacks = tonumber(spellData.minStacks) or 0
 local userAlertTime = tonumber(spellData.alertTime) or 0
-if spellData.isProc then
-if isActive then
-if limitStacks == 0 or (stacks >= limitStacks) then
-if userAlertTime == 0 or (timeLeft <= userAlertTime) then
-needAlert = true
 local prefix = (spellData.isCombo) and " КП" or " ст"
-local displayStacks = (stacks > 0) and (" (" .. stacks .. prefix .. ")") or ""
-local displayTime = (userAlertTime > 0 and timeLeft > 0 and timeLeft <= 9000) and (" " .. timeLeft .. " сек") or ""
-customReason = displayStacks .. displayTime
-end
-end
-end
-elseif spellData.isCooldown then
-if GetSpellCooldown(spellData.name) == 0 and not isActive then needAlert = true end
-else
 if not isActive then
+if not spellData.isProc and not spellData.isStackProgress and not spellData.isCombo then
 needAlert = true
+end
+else
+if spellData.isHideOnCap and limitStacks > 0 and (stacks >= limitStacks) then
+if userAlertTime > 0 and timeLeft <= userAlertTime then
+needAlert = true
+customReason = " (" .. timeLeft .. " сек)"
+end
+elseif spellData.isStackProgress and limitStacks > 0 and (stacks < limitStacks) then
+needAlert = true
+customReason = " (" .. stacks .. "/" .. limitStacks .. prefix .. ")"
 else
 if limitStacks > 0 and (stacks <= limitStacks) then
 needAlert = true
-local prefix = (spellData.isCombo) and " КП" or " ст"
 customReason = " (Осталось: " .. stacks .. prefix .. ")"
 elseif userAlertTime > 0 and timeLeft <= userAlertTime then
 needAlert = true
 customReason = " (" .. timeLeft .. " сек)"
+elseif spellData.isProc or spellData.isStackProgress or spellData.isCombo then
+needAlert = true
+local displayStacks = (stacks > 0) and (" (" .. stacks .. prefix .. ")") or ""
+local displayTime = (userAlertTime > 0 and timeLeft <= userAlertTime and timeLeft < 9000) and (" " .. timeLeft .. " сек") or ""
+customReason = displayStacks .. displayTime
 end
 end
 end
@@ -315,7 +324,7 @@ end
 local shortcutFrame = CreateFrame("Frame") 
 shortcutFrame:RegisterEvent("PLAYER_LOGIN")
 shortcutFrame:SetScript("OnEvent", function()
-    -- ИСПРАВЛЕHО: Родительские панели объявлены в самом верху, чтобы функции ниже их видели
+    -- Родительские фреймы объявлены первыми для соблюдения иерархии Lua
     optionsPanel = CreateFrame("Frame", "RAY_OptionsPanel", UIParent) 
     optionsPanel.name = "RAY"
     
@@ -355,19 +364,22 @@ shortcutFrame:SetScript("OnEvent", function()
     mainScroll:SetPoint("TOPLEFT", 0, -85) mainScroll:SetPoint("BOTTOMRIGHT", -26, 6)
     
     local mainChild = CreateFrame("Frame", nil, mainScroll) 
-    mainChild:SetSize(580, 920) mainScroll:SetScrollChild(mainChild)
+    -- ИСПРАВЛЕHО: Общая ширина увеличена до 640 для идеального размещения колонок
+    mainChild:SetSize(640, 960) mainScroll:SetScrollChild(mainChild)
 
+    -- ИСПРАВЛЕHО: Разделительная полоса выставлена ровно по центру на позицию 295
     local subLine = mainChild:CreateTexture(nil, "BACKGROUND") 
-    subLine:SetWidth(2) subLine:SetHeight(880) subLine:SetPoint("TOPLEFT", 245, 0) subLine:SetTexture(0.3, 0.3, 0.3, 0.5)
+    subLine:SetWidth(2) subLine:SetHeight(920) subLine:SetPoint("TOPLEFT", 245, 0) subLine:SetTexture(0.3, 0.3, 0.3, 0.5)
     
     local leftHeader = mainChild:CreateFontString(nil, "OVERLAY", "GameFontNormal") 
     leftHeader:SetPoint("TOPLEFT", 10, 0) leftHeader:SetText("|cff44FF44БАФФЫ И ПРОКИ|r")
     
     local rightHeader = mainChild:CreateFontString(nil, "OVERLAY", "GameFontNormal") 
-    rightHeader:SetPoint("TOPLEFT", 265, 0) rightHeader:SetText("|cffFF4444ДЕБАФФЫ|r")
+    rightHeader:SetPoint("TOPLEFT", 310, 0) rightHeader:SetText("|cffFF4444ДЕБАФФЫ|r")
     
     local editCounter, dropCounter = 0, 0
     local function CreateColumn(isLeft, modeType, textColorCode)
+        -- ИСПРАВЛЕHО: Правая колонка дебаффов жестко зафиксирована на позиции 310
         local hOffset = isLeft and 10 or 310 editCounter = editCounter + 1
         
         local editBox = CreateBlizzardEditBox(mainChild, hOffset, -25, 175, "RAY_NewEdit_" .. editCounter)
@@ -381,7 +393,7 @@ shortcutFrame:SetScript("OnEvent", function()
         local dropDown = CreateFrame("Frame", "RAY_DropDown_" .. dropCounter, mainChild, "UIDropDownMenuTemplate") 
         dropDown:SetPoint("TOPLEFT", hOffset - 15, -55) dropDown:SetSize(110, 25)
         
-        local tempConfig = { onlyInCombat = true, zoneWorld = true, zoneParty = true, zoneRaid = true, target = (modeType == "DEBUFF" and "target" or "player"), isCooldown = false, isProc = false, isCombo = false, isWeaponText = false }
+        local tempConfig = { onlyInCombat = true, zoneWorld = true, zoneParty = true, zoneRaid = true, target = (modeType == "DEBUFF" and "target" or "player"), isCooldown = false, isProc = false, isCombo = false, isWeaponText = false, isStackProgress = false, isHideOnCap = false }
         local function GetActiveIndex() return (modeType == "BUFF") and selectedBuffIndex or selectedDebuffIndex end
         
         local function CreateLocalCheckbox(label, yOffset, key, tText)
@@ -396,18 +408,22 @@ shortcutFrame:SetScript("OnEvent", function()
             SetTooltip(cb, tText) return cb
         end
         
-        local cbCombat   = CreateLocalCheckbox("Включать только в бою", 85, "onlyInCombat", "Оповещать только во время боя.")
-        local cbWorld    = CreateLocalCheckbox("Отслеживать в открытом мире", 107, "zoneWorld", "Проверять в открытом мире.")
-        local cbParty    = CreateLocalCheckbox("Отслеживать в подземельях", 129, "zoneParty", "Проверять в инстах на 5 человек.")
-        local cbRaid     = CreateLocalCheckbox("Отслеживать в рейдовых зонах", 151, "zoneRaid", "Проверять в рейдах.")
-        local cbCooldown = CreateLocalCheckbox("Отслеживать готовность КД", 173, "isCooldown", "Оповестит, когда способность выйдет из КД.")
-        local cbProc     = CreateLocalCheckbox("Это прок (активен порог стаков)", 195, "isProc", "Включает логику накопления стаков (выведет уведомление при >= порога).")
-        local cbCombo    = CreateLocalCheckbox("Это серия приёмов (комбо-поинты)", 217, "isCombo", "Включите для отслеживания КП разбойника/друида. Серия сработает при достижении порога стаков.")
-        local cbWeapon   = CreateLocalCheckbox("Это чары на оружии (шаман/яды)", 239, "isWeaponText", "Включите для сканирования временных чар оружия (Неистовство ветра, Язык пламени, роговские яды). Пишите точное имя чарки!")
-        
+        -- ИСПРАВЛЕHО: Все чекбоксы опущены на стартовую позицию 115 для ликвидации наползания
+        local cbCombat   = CreateLocalCheckbox("Включать только в бою", 115, "onlyInCombat", "Оповещать только во время боя.")
+        local cbWorld    = CreateLocalCheckbox("Отслеживать в открытом мире", 137, "zoneWorld", "Проверять в открытом мире.")
+        local cbParty    = CreateLocalCheckbox("Отслеживать в подземельях", 159, "zoneParty", "Проверять в инстах на 5 человек.")
+        local cbRaid     = CreateLocalCheckbox("Отслеживать в рейдовых зонах", 181, "zoneRaid", "Проверять в рейдах.")
+        local cbCooldown = CreateLocalCheckbox("Отслеживать готовность КД", 203, "isCooldown", "Оповестит, когда способность выйдет из КД.")
+        local cbProc     = CreateLocalCheckbox("Это прок (активен вплоть до траты)", 225, "isProc", "Оповещение горит постоянно при максимальном капе стаков вплоть до их траты.")
+        local cbCombo    = CreateLocalCheckbox("Это серия приёмов (комбо-поинты)", 247, "isCombo", "Включите для отслеживания КП разбойника/друила.")
+        local cbWeapon   = CreateLocalCheckbox("Это чары на оружии (шаман/яды)", 269, "isWeaponText", "Включите для сканирования временных чар оружия. Пишите имя чарки!")
+        local cbProgress = CreateLocalCheckbox("Показывать набор стаков в процессе", 291, "isStackProgress", "Будет наглядно выводить текущий сбор стаков: (1/5), (2/5), (3/5) до максимума.")
+        local cbHideCap  = CreateLocalCheckbox("Скрыть надпись при полном наборе", 313, "isHideOnCap", "Для эффектов типа Раскола брони. Исчезнет на 5/5 стаках.")
+
         local sTimeName = "RAY_SliderTimeUnique_" .. editCounter 
         local sliderTime = CreateFrame("Slider", sTimeName, mainChild, "OptionsSliderTemplate") 
-        sliderTime:SetSize(105, 17) sliderTime:SetPoint("TOPLEFT", hOffset + 4, -280) sliderTime:SetMinMaxValues(0, 60) sliderTime:SetValueStep(1)
+        -- ИСПРАВЛЕHО: Бегунки времени и стаков смещены на отметку -350
+        sliderTime:SetSize(105, 17) sliderTime:SetPoint("TOPLEFT", hOffset + 4, -350) sliderTime:SetMinMaxValues(0, 60) sliderTime:SetValueStep(1)
         local stText = sliderTime:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall") 
         stText:SetPoint("BOTTOM", sliderTime, "TOP", 0, 2) stText:SetText(textColorCode .. "Время (сек): 0|r")
         
@@ -420,38 +436,39 @@ shortcutFrame:SetScript("OnEvent", function()
         sliderTime:SetScript("OnValueChanged", function(self, value) local val = math.floor(value) stText:SetText(textColorCode .. "Время (сек): " .. val .. "|r") local idx = GetActiveIndex() if idx and RAY_Config.spells[idx] then RAY_Config.spells[idx].alertTime = val CheckAllAuras() end end)
         sliderStacks:SetScript("OnValueChanged", function(self, value) local val = math.floor(value) ssText:SetText(textColorCode .. "Порог стаков: " .. val .. "|r") local idx = GetActiveIndex() if idx and RAY_Config.spells[idx] then RAY_Config.spells[idx].minStacks = val CheckAllAuras() end end)
         
+        -- ИСПРАВЛЕHО: Списки сохраненных спеллов опущены на отметку -385
         local listFrame = CreateFrame("Frame", nil, mainChild) 
-        listFrame:SetSize(210, 110) listFrame:SetPoint("TOPLEFT", editBox, "TOPLEFT", 4, -315)
+        listFrame:SetSize(210, 110) listFrame:SetPoint("TOPLEFT", editBox, "TOPLEFT", 4, -385)
         
         UIDropDownMenu_Initialize(dropDown, function()
-            local currentIdx = GetActiveIndex() local activeTarget = currentIdx and RAY_Config.spells[currentIdx].target or tempConfig.target local info = UIDropDownMenu_CreateInfo()
-            info.text = "Цель: Игрок" info.value = "player" info.checked = (activeTarget == "player") info.func = function() local ai = GetActiveIndex() if ai and RAY_Config.spells[ai] then RAY_Config.spells[ai].target = "player" else tempConfig.target = "player" end UIDropDownMenu_SetSelectedValue(dropDown, "player") UIDropDownMenu_SetText(dropDown, "Цель: Игрок") CheckAllAuras() CloseDropDownMenus() end UIDropDownMenu_AddButton(info)
+local currentIdx = GetActiveIndex() local activeTarget = currentIdx and RAY_Config.spells[currentIdx].target or tempConfig.target local info = UIDropDownMenu_CreateInfo()
+info.text = "Цель: Игрок" info.value = "player" info.checked = (activeTarget == "player") info.func = function() local ai = GetActiveIndex() if ai and RAY_Config.spells[ai] then RAY_Config.spells[ai].target = "player" else tempConfig.target = "player" end UIDropDownMenu_SetSelectedValue(dropDown, "player") UIDropDownMenu_SetText(dropDown, "Цель: Игрок") CheckAllAuras() CloseDropDownMenus() end UIDropDownMenu_AddButton(info)
 info.text = "Цель: Таргет" info.value = "target" info.checked = (activeTarget == "target") info.func = function() local ai = GetActiveIndex() if ai and RAY_Config.spells[ai] then RAY_Config.spells[ai].target = "target" else tempConfig.target = "target" end UIDropDownMenu_SetSelectedValue(dropDown, "target") UIDropDownMenu_SetText(dropDown, "Цель: Таргет") CheckAllAuras() CloseDropDownMenus() end UIDropDownMenu_AddButton(info)
 end)
 btnOk:SetScript("OnClick", function()
 local typedName = editBox:GetText() if not typedName or typedName == "" or typedName == " " then return end local idx = GetActiveIndex()
 if idx and RAY_Config.spells[idx] then
-local d = RAY_Config.spells[idx] d.name = typedName d.target = UIDropDownMenu_GetSelectedValue(dropDown) or d.target d.minStacks = math.floor(sliderStacks:GetValue()) d.alertTime = math.floor(sliderTime:GetValue()) d.onlyInCombat = cbCombat:GetChecked() d.zoneWorld = cbWorld:GetChecked() d.zoneParty = cbParty:GetChecked() d.zoneRaid = cbRaid:GetChecked() d.isCooldown = cbCooldown:GetChecked() d.isProc = cbProc:GetChecked() d.isCombo = cbCombo:GetChecked() d.isWeaponText = cbWeapon:GetChecked()
+local d = RAY_Config.spells[idx] d.name = typedName d.target = UIDropDownMenu_GetSelectedValue(dropDown) or d.target d.minStacks = math.floor(sliderStacks:GetValue()) d.alertTime = math.floor(sliderTime:GetValue()) d.onlyInCombat = cbCombat:GetChecked() d.zoneWorld = cbWorld:GetChecked() d.zoneParty = cbParty:GetChecked() d.zoneRaid = cbRaid:GetChecked() d.isCooldown = cbCooldown:GetChecked() d.isProc = cbProc:GetChecked() d.isCombo = cbCombo:GetChecked() d.isWeaponText = cbWeapon:GetChecked() d.isStackProgress = cbProgress:GetChecked() d.isHideOnCap = cbHideCap:GetChecked()
 else
-table.insert(RAY_Config.spells, { name = typedName, mode = modeType, target = UIDropDownMenu_GetSelectedValue(dropDown) or tempConfig.target, minStacks = math.floor(sliderStacks:GetValue()), alertTime = math.floor(sliderTime:GetValue()), onlyInCombat = cbCombat:GetChecked(), zoneWorld = cbWorld:GetChecked(), zoneParty = cbParty:GetChecked(), zoneRaid = cbRaid:GetChecked(), isCooldown = cbCooldown:GetChecked(), isProc = cbProc:GetChecked(), isCombo = cbCombo:GetChecked(), isWeaponText = cbWeapon:GetChecked() })
+table.insert(RAY_Config.spells, { name = typedName, mode = modeType, target = UIDropDownMenu_GetSelectedValue(dropDown) or tempConfig.target, minStacks = math.floor(sliderStacks:GetValue()), alertTime = math.floor(sliderTime:GetValue()), onlyInCombat = cbCombat:GetChecked(), zoneWorld = cbWorld:GetChecked(), zoneParty = cbParty:GetChecked(), zoneRaid = cbRaid:GetChecked(), isCooldown = cbCooldown:GetChecked(), isProc = cbProc:GetChecked(), isCombo = cbCombo:GetChecked(), isWeaponText = cbWeapon:GetChecked(), isStackProgress = cbProgress:GetChecked(), isHideOnCap = cbHideCap:GetChecked() })
 end
-updateSpellLists() CheckAllAuras() editBox:SetText("") cbCombat:SetChecked(true) cbWorld:SetChecked(true) cbParty:SetChecked(true) cbRaid:SetChecked(true) cbCooldown:SetChecked(false) cbProc:SetChecked(false) cbCombo:SetChecked(false) cbWeapon:SetChecked(false) if modeType == "BUFF" then selectBuff(nil) else selectDebuff(nil) end
+updateSpellLists() CheckAllAuras() editBox:SetText("") cbCombat:SetChecked(true) cbWorld:SetChecked(true) cbParty:SetChecked(true) cbRaid:SetChecked(true) cbCooldown:SetChecked(false) cbProc:SetChecked(false) cbCombo:SetChecked(false) cbWeapon:SetChecked(false) cbProgress:SetChecked(false) cbHideCap:SetChecked(false) if modeType == "BUFF" then selectBuff(nil) else selectDebuff(nil) end
 end)
-return { editBox = editBox, sliderTime = sliderTime, sliderStacks = sliderStacks, dropDown = dropDown, listFrame = listFrame, cbCombat = cbCombat, cbWorld = cbWorld, cbParty = cbParty, cbRaid = cbRaid, cbCooldown = cbCooldown, cbProc = cbProc, cbCombo = cbCombo, cbWeapon = cbWeapon, stText = stText, ssText = ssText }
+return { editBox = editBox, sliderTime = sliderTime, sliderStacks = sliderStacks, dropDown = dropDown, listFrame = listFrame, cbCombat = cbCombat, cbWorld = cbWorld, cbParty = cbParty, cbRaid = cbRaid, cbCooldown = cbCooldown, cbProc = cbProc, cbCombo = cbCombo, cbWeapon = cbWeapon, cbProgress = cbProgress, cbHideOnCap = cbHideCap, stText = stText, ssText = ssText }
 end
 leftUI = CreateColumn(true, "BUFF", "|cff44FF44")
 rightUI = CreateColumn(false, "DEBUFF", "|cffFF4444")
 selectBuff = function(index)
 selectedBuffIndex = index for _, btn in ipairs(listButtonsBuff) do btn:UnlockHighlight() end
 if index and RAY_Config.spells[index] then
-local data = RAY_Config.spells[index] leftUI.editBox:SetText(data.name or "") UIDropDownMenu_SetSelectedValue(leftUI.dropDown, data.target or "player") UIDropDownMenu_SetText(leftUI.dropDown, data.target == "target" and "Цель: Таргет" or "Цель: Игрок") leftUI.sliderTime:SetValue(data.alertTime or 0) leftUI.sliderStacks:SetValue(data.minStacks or 0) leftUI.cbCombat:SetChecked(data.onlyInCombat) leftUI.cbWorld:SetChecked(data.zoneWorld) leftUI.cbParty:SetChecked(data.zoneParty) leftUI.cbRaid:SetChecked(data.zoneRaid) leftUI.cbCooldown:SetChecked(data.isCooldown) leftUI.cbProc:SetChecked(data.isProc) leftUI.cbCombo:SetChecked(data.isCombo) leftUI.cbWeapon:SetChecked(data.isWeaponText)
-else leftUI.editBox:SetText("") leftUI.sliderTime:SetValue(0) leftUI.sliderStacks:SetValue(0) leftUI.cbCombat:SetChecked(true) leftUI.cbWorld:SetChecked(true) leftUI.cbParty:SetChecked(true) leftUI.cbRaid:SetChecked(true) leftUI.cbCooldown:SetChecked(false) leftUI.cbProc:SetChecked(false) leftUI.cbCombo:SetChecked(false) leftUI.cbWeapon:SetChecked(false) UIDropDownMenu_SetSelectedValue(leftUI.dropDown, "player") UIDropDownMenu_SetText(leftUI.dropDown, "Цель: Игрок") end
+local data = RAY_Config.spells[index] leftUI.editBox:SetText(data.name or "") UIDropDownMenu_SetSelectedValue(leftUI.dropDown, data.target or "player") UIDropDownMenu_SetText(leftUI.dropDown, data.target == "target" and "Цель: Таргет" or "Цель: Игрок") leftUI.sliderTime:SetValue(data.alertTime or 0) leftUI.sliderStacks:SetValue(data.minStacks or 0) leftUI.cbCombat:SetChecked(data.onlyInCombat) leftUI.cbWorld:SetChecked(data.zoneWorld) leftUI.cbParty:SetChecked(data.zoneParty) leftUI.cbRaid:SetChecked(data.zoneRaid) leftUI.cbCooldown:SetChecked(data.isCooldown) leftUI.cbProc:SetChecked(data.isProc) leftUI.cbCombo:SetChecked(data.isCombo) leftUI.cbWeapon:SetChecked(data.isWeaponText) leftUI.cbProgress:SetChecked(data.isStackProgress) leftUI.cbHideOnCap:SetChecked(data.isHideOnCap)
+else leftUI.editBox:SetText("") leftUI.sliderTime:SetValue(0) leftUI.sliderStacks:SetValue(0) leftUI.cbCombat:SetChecked(true) leftUI.cbWorld:SetChecked(true) leftUI.cbParty:SetChecked(true) leftUI.cbRaid:SetChecked(true) leftUI.cbCooldown:SetChecked(false) leftUI.cbProc:SetChecked(false) leftUI.cbCombo:SetChecked(false) leftUI.cbWeapon:SetChecked(false) leftUI.cbProgress:SetChecked(false) leftUI.cbHideOnCap:SetChecked(false) UIDropDownMenu_SetSelectedValue(leftUI.dropDown, "player") UIDropDownMenu_SetText(leftUI.dropDown, "Цель: Игрок") end
 end
 selectDebuff = function(index)
 selectedDebuffIndex = index for _, btn in ipairs(listButtonsDebuff) do btn:UnlockHighlight() end
 if index and RAY_Config.spells[index] then
-local data = RAY_Config.spells[index] rightUI.editBox:SetText(data.name or "") UIDropDownMenu_SetSelectedValue(rightUI.dropDown, data.target or "target") UIDropDownMenu_SetText(rightUI.dropDown, data.target == "target" and "Цель: Таргет" or "Цель: Игрок") rightUI.sliderTime:SetValue(data.alertTime or 0) rightUI.sliderStacks:SetValue(data.minStacks or 0) rightUI.cbCombat:SetChecked(data.onlyInCombat) rightUI.cbWorld:SetChecked(data.zoneWorld) rightUI.cbParty:SetChecked(data.zoneParty) rightUI.cbRaid:SetChecked(data.zoneRaid) rightUI.cbCooldown:SetChecked(data.isCooldown) rightUI.cbProc:SetChecked(data.isProc) rightUI.cbCombo:SetChecked(data.isCombo) rightUI.cbWeapon:SetChecked(data.isWeaponText)
-else rightUI.editBox:SetText("") rightUI.sliderTime:SetValue(0) rightUI.sliderStacks:SetValue(0) rightUI.cbCombat:SetChecked(true) rightUI.cbWorld:SetChecked(true) rightUI.cbParty:SetChecked(true) rightUI.cbRaid:SetChecked(true) rightUI.cbCooldown:SetChecked(false) rightUI.cbProc:SetChecked(false) rightUI.cbCombo:SetChecked(false) rightUI.cbWeapon:SetChecked(false) UIDropDownMenu_SetSelectedValue(rightUI.dropDown, "target") UIDropDownMenu_SetText(rightUI.dropDown, "Цель: Таргет") end
+local data = RAY_Config.spells[index] rightUI.editBox:SetText(data.name or "") UIDropDownMenu_SetSelectedValue(rightUI.dropDown, data.target or "target") UIDropDownMenu_SetText(rightUI.dropDown, data.target == "target" and "Цель: Таргет" or "Цель: Игрок") rightUI.sliderTime:SetValue(data.alertTime or 0) rightUI.sliderStacks:SetValue(data.minStacks or 0) rightUI.cbCombat:SetChecked(data.onlyInCombat) rightUI.cbWorld:SetChecked(data.zoneWorld) rightUI.cbParty:SetChecked(data.zoneParty) rightUI.cbRaid:SetChecked(data.zoneRaid) rightUI.cbCooldown:SetChecked(data.isCooldown) rightUI.cbProc:SetChecked(data.isProc) rightUI.cbCombo:SetChecked(data.isCombo) rightUI.cbWeapon:SetChecked(data.isWeaponText) rightUI.cbProgress:SetChecked(data.isStackProgress) rightUI.cbHideOnCap:SetChecked(data.isHideOnCap)
+else rightUI.editBox:SetText("") rightUI.sliderTime:SetValue(0) rightUI.sliderStacks:SetValue(0) rightUI.cbCombat:SetChecked(true) rightUI.cbWorld:SetChecked(true) rightUI.cbParty:SetChecked(true) rightUI.cbRaid:SetChecked(true) rightUI.cbCooldown:SetChecked(false) rightUI.cbProc:SetChecked(false) rightUI.cbCombo:SetChecked(false) rightUI.cbWeapon:SetChecked(false) rightUI.cbProgress:SetChecked(false) rightUI.cbHideOnCap:SetChecked(false) UIDropDownMenu_SetSelectedValue(rightUI.dropDown, "target") UIDropDownMenu_SetText(rightUI.dropDown, "Цель: Таргет") end
 end
 updateSpellLists = function()
 for _, btn in ipairs(listButtonsBuff) do btn:Hide() end for _, btn in ipairs(listButtonsDebuff) do btn:Hide() end
@@ -466,10 +483,11 @@ if isBuff then bCount = bCount + 1 else dCount = dCount + 1 end
 end
 end
 -- 4.2 НАСТРОЙКА СТРАНИЦЫ №2 (СПЕКИ И КОМПЛЕКТЫ)
-local scrollFrame = CreateFrame("ScrollFrame", "RAY_SubScrollContainer", subOptionsPanel, "UIPanelScrollFrameTemplate")
-scrollFrame:SetPoint("TOPLEFT", 0, -85) scrollFrame:SetPoint("BOTTOMRIGHT", -26, 6)
-local scrollChild = CreateFrame("Frame", nil, scrollFrame)
-scrollChild:SetSize(580, 920) scrollFrame:SetScrollChild(scrollChild)
+-- ИСПРАВЛЕHО: Полностью вычищены битые ссылки на scrollFrame, заменены на локальный subScrollFrame
+local subScrollFrame = CreateFrame("ScrollFrame", "RAY_SubScrollContainer", subOptionsPanel, "UIPanelScrollFrameTemplate")
+subScrollFrame:SetPoint("TOPLEFT", 0, -85) subScrollFrame:SetPoint("BOTTOMRIGHT", -26, 6)
+local scrollChild = CreateFrame("Frame", nil, subScrollFrame)
+scrollChild:SetSize(580, 920) subScrollFrame:SetScrollChild(scrollChild)
 local subTitle = subOptionsPanel:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
 subTitle:SetPoint("TOPLEFT", 16, -14) subTitle:SetText("|cff00FFFFАвтоматика Спеков, Стоек и Комплектов Экипировки|r")
 local subNotice = subOptionsPanel:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
@@ -556,7 +574,6 @@ BuildInputFieldBlock("Имя ПРОКА триньки / КД:", -545, "icds", "
 end
 CreateSubPageBlock(1, true, "|cff44FF44")
 CreateSubPageBlock(2, false, "|cffFF4444")
--- ОФИЦИАЛЬHАЯ РЕГИСТРАЦИЯ КОМПОHЕНТОВ ПО ЦЕПОЧКЕ ВНУТРИ LOGIN БЛОКА
 InterfaceOptions_AddCategory(optionsPanel)
 InterfaceOptions_AddCategory(subOptionsPanel)
 updateSpellLists()
