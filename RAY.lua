@@ -275,9 +275,10 @@ wipe(cacheTargetAuras)
 end
 if sylvanasAlertActive and RAY_Config.boxHunterEnabled then
 if curTime <= sylvanasAlertActive then
-uniqueAlerts["|cffFF0000[RAY]: Рядом завели Шкатулку Сильваны!|r"] = true
+uniqueAlerts["|cffFF0000[RAY Детектор]: Шкатулку завел -> " .. tostring(sylvanasAlertActivePlayer or "Неизвестно") .. "!|r"] = true
 else
 sylvanasAlertActive = false
+sylvanasAlertActivePlayer = nil
 end
 end
 if RAY_Config.specSettings and RAY_Config.specSettings[currentSpec] then
@@ -427,27 +428,18 @@ end
 end
 end
 end)
--- Детектор Шкатулки Сильваны
-local soundHookFrame = CreateFrame("Frame")
-soundHookFrame:RegisterEvent("SOUND_PLAY")
-soundHookFrame:SetScript("OnEvent", function(self, event, soundID, fileDataID)
-if RAY_Config and RAY_Config.boxHunterEnabled and (fileDataID == 541604 or fileDataID == 541605 or soundID == 17294 or soundID == 17300) then
-if not sylvanasAlertActive then
-sylvanasAlertActive = GetTime() + 7
-local joker = "Кто-то рядом"
-local rMembers = GetNumRaidMembers() or 0
-local pMembers = GetNumPartyMembers() or 0
-if rMembers > 0 then
-for i = 1, rMembers do
-local name = GetRaidRosterInfo(i)
-if name and CheckInteractDistance(name, 3) then joker = name break end
-end
-elseif pMembers > 0 then
-for i = 1, pMembers do
-if CheckInteractDistance("party"..i, 3) then joker = UnitName("party"..i) break end
-end
-end
-DEFAULT_CHAT_FRAME:AddMessage("|cffFF0000[RAY Детектор Шкатулок]:|r Обнаружен запуск шкатулки Сильваны! Возможный шутник: |cff00FF00" .. joker .. "|r")
+-- НАДЕЖНЫЙ ОХОТНИК ЗА ШКАТУЛКАМИ СИЛЬВАНЫ ДЛЯ РЕЙДОВ И ИНСТОВ
+local sylvanasHunterFrame = CreateFrame("Frame")
+sylvanasHunterFrame:RegisterEvent("UNIT_SPELLCAST_SUCCEEDED")
+sylvanasHunterFrame:SetScript("OnEvent", function(_, event, unit, spellName)
+if not RAY_Config or not RAY_Config.boxHunterEnabled then return end
+if event == "UNIT_SPELLCAST_SUCCEEDED" and spellName == "Плач высокорожденных" then
+if UnitInRaid(unit) or UnitInParty(unit) or unit == "player" then
+local now = GetTime()
+local joker = UnitName(unit) or "Кто-то в рейде"
+sylvanasAlertActive = now + 7
+sylvanasAlertActivePlayer = joker
+DEFAULT_CHAT_FRAME:AddMessage("|cffFF0000[RAY Детектор]:|r Обнаружен запуск шкатулки Сильваны! Шутник пойман: |cff00FF00" .. joker .. "|r")
 CheckAllAuras()
 end
 end
@@ -673,7 +665,7 @@ local hunterCbText = hunterCb:CreateFontString(nil, "OVERLAY", "GameFontNormal")
 hunterCbText:SetPoint("LEFT", hunterCb, "RIGHT", 5, 1) hunterCbText:SetText("|cff00FF00Детектор Шкатулки|r")
 hunterCb:SetScript("OnShow", function(self) self:SetChecked(RAY_Config.boxHunterEnabled) end)
 hunterCb:SetScript("OnClick", function(self) RAY_Config.boxHunterEnabled = self:GetChecked() sylvanasAlertActive = false CheckAllAuras() end)
-SetTooltip(hunterCb, "Включает сканирование звуков Шкатулки Сильваны.")
+SetTooltip(hunterCb, "Включает сканирование заклинания Шкатулки Сильваны.")
 local btnClear = CreateFrame("Button", nil, subOptionsPanel, "UIPanelButtonTemplate")
 btnClear:SetSize(55, 22) btnClear:SetPoint("LEFT", hunterCbText, "RIGHT", 25, -1) btnClear:SetText("|cffFF3333Clear|r")
 local nTex = btnClear:GetNormalTexture() if nTex then nTex:SetVertexColor(1, 0.2, 0.2, 0.9) end
