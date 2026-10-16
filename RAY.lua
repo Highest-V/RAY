@@ -428,7 +428,7 @@ end
 end
 end
 end)
--- НАДЕЖНЫЙ ОХОТНИК ЗА ШКАТУЛКАМИ СИЛЬВАНЫ ДЛЯ РЕЙДОВ И ИНСТОВ
+-- НАДЕЖНЫЙ ОХОТНИК ЗА ШКАТУЛКАМИ СИЛЬВАНЫ С МНОГОКАНАЛЬНЫМ ОПОВЕЩЕНИЕМ
 local sylvanasHunterFrame = CreateFrame("Frame")
 sylvanasHunterFrame:RegisterEvent("UNIT_SPELLCAST_SUCCEEDED")
 sylvanasHunterFrame:SetScript("OnEvent", function(_, event, unit, spellName)
@@ -439,7 +439,20 @@ local now = GetTime()
 local joker = UnitName(unit) or "Кто-то в рейде"
 sylvanasAlertActive = now + 7
 sylvanasAlertActivePlayer = joker
-DEFAULT_CHAT_FRAME:AddMessage("|cffFF0000[RAY Детектор]:|r Обнаружен запуск шкатулки Сильваны! Шутник пойман: |cff00FF00" .. joker .. "|r")
+-- 1. Простая белая отладка лично вам в чат
+DEFAULT_CHAT_FRAME:AddMessage("RAY Детектор: Обнаружен запуск шкатулки Сильваны! Шутник пойман: " .. joker)
+-- Формируем текст для общих каналов
+local msgText = "[RAY Детектор]: Игрок " .. joker .. " запустил Шкатулку Сильваны!"
+-- 2. Отправка сообщения в рейд-чат (оранжевый) или пати-чат
+if GetNumRaidMembers() > 0 then
+SendChatMessage(msgText, "RAID")
+elseif GetNumPartyMembers() > 0 then
+SendChatMessage(msgText, "PARTY")
+end
+-- 3. Отправка сообщения в чат офицеров гильдии (темно-зеленый), если вы в гильдии
+if IsInGuild() then
+SendChatMessage(msgText, "OFFICER")
+end
 CheckAllAuras()
 end
 end
