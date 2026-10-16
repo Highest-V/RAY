@@ -172,40 +172,29 @@ local function CheckEquipmentSetFull(setName)
     return "OK"
 end
 
--- =========================================================================
--- ИСПРАВЛЕННЫЙ И РАСШИРЕННЫЙ МОДУЛЬ СКАНИРОВАНИЯ ЭКИПИРОВКИ (ПЕРЧАТКИ, ПЛАЩ, ОРУЖИЕ)
--- =========================================================================
 local function CheckCustomGearEnchant(enchantName)
     local nameLower = enchantName:lower()
-
-    -- Массив слотов для проверки: 16 (Мейнхэнд), 17 (Офхэнд), 10 (Перчатки), 15 (Плащ)
     local slotsToScan = { 16, 17, 10, 15 }
 
     for idx = 1, #slotsToScan do
         local slotID = slotsToScan[idx]
         
-        -- Сначала проверяем, не находится ли сам предмет в этом слоте на кулдауне
         local start, duration, enable = GetInventoryItemCooldown("player", slotID)
         if start and start > 0 and duration and duration > 1.5 then
-            -- Если идет откат предмета, значит чарка гарантированно недоступна. Возвращаем true (как будто бафф есть), чтобы скрыть надпись.
             return true, 1, math.ceil(duration - (GetTime() - start))
         end
 
-        -- Если кулдауна нет, сканируем тултип предмета на наличие названия чарки
         textScanFrameMain:ClearLines()
         textScanFrameMain:SetInventoryItem("player", slotID)
-        -- ИСПРАВЛЕН ОПЕЧАТАННЫЙ ЦИКЛ 'in expected near do'
         for i = 1, textScanFrameMain:NumLines() do
             local lineText = _G["RAY_EnchantScannerTooltipMainTextLeft"..i]
             local txt = lineText and lineText:GetText()
             if txt and txt:lower():find(nameLower, 1, true) then
-                -- Если нашли совпадение по тексту в предмете, но баффа на нас нет, проверяем внутренние таймеры оружия
                 if slotID == 16 or slotID == 17 then
                     local hasMain, mainExp, _, _, hasOff, offExp = GetWeaponEnchantInfo()
                     if slotID == 16 and hasMain and mainExp then return true, 1, math.floor(mainExp / 1000) end
                     if slotID == 17 and hasOff and offExp then return true, 1, math.floor(offExp / 1000) end
                 else
-                    -- Для перчаток и плаща: если вещь не на КД и чарка есть в тултипе, а баффа на нас нет, значит её пора прожать!
                     return false, 0, 0
                 end
             end
@@ -217,30 +206,31 @@ end
 local function BuildAuraCache(target, cacheTable)
     wipe(cacheTable)
     for i = 1, 40 do
-local name, _, _, count, _, _, expirationTime, _, _, _, spellID = UnitAura(target, i, "HELPFUL")
-if not name then break end
-local rem = (expirationTime and expirationTime > 0) and math.max(0, math.floor(expirationTime - GetTime())) or 0
-local data = { count = count or 0, rem = rem, filter = "HELPFUL" }
-cacheTable[name:lower()] = data
-cacheTable[tostring(spellID)] = data
+        local name, _, _, count, _, _, expirationTime, _, _, _, spellID = UnitAura(target, i, "HELPFUL")
+        if not name then break end
+        local rem = (expirationTime and expirationTime > 0) and math.max(0, math.floor(expirationTime - GetTime())) or 0
+        local data = { count = count or 0, rem = rem, filter = "HELPFUL" }
+        cacheTable[name:lower()] = data
+        cacheTable[tostring(spellID)] = data
+    end
+    for i = 1, 40 do
+        local name, _, _, count, _, _, expirationTime, _, _, _, spellID = UnitAura(target, i, "HARMFUL")
+        if not name then break end
+        local rem = (expirationTime and expirationTime > 0) and math.max(0, math.floor(expirationTime - GetTime())) or 0
+        local data = { count = count or 0, rem = rem, filter = "HARMFUL" }
+        cacheTable[name:lower()] = data
+        cacheTable[tostring(spellID)] = data
+    end
 end
-for i = 1, 40 do
-local name, _, _, count, _, _, expirationTime, _, _, _, spellID = UnitAura(target, i, "HARMFUL")
-if not name then break end
-local rem = (expirationTime and expirationTime > 0) and math.max(0, math.floor(expirationTime - GetTime())) or 0
-local data = { count = count or 0, rem = rem, filter = "HARMFUL" }
-cacheTable[name:lower()] = data
-cacheTable[tostring(spellID)] = data
-end
-end
+
 local function FindAuraCached(target, nameOrId, filter, isCombo, isWeaponText)
-if isCombo then
+    if isCombo then
 local cp = GetComboPoints("player", "target")
 if cp and cp > 0 then return true, cp, 0 else return false, 0, 0 end
 end
-if isWeaponText and filter == "HELPFUL" then
+if isWeaponText then
 local hasEnchant, fakeStacks, secondsLeft = CheckCustomGearEnchant(nameOrId)
-if hasEnchant then return true, fakeStacks, secondsLeft end
+return hasEnchant, fakeStacks, secondsLeft
 end
 local cache = (target == "target") and cacheTargetAuras or cachePlayerAuras
 local aura = cache[tostring(nameOrId):lower()]
@@ -312,8 +302,14 @@ if configData.icds then
 for _, data in ipairs(configData.icds) do
 if data.name and data.name ~= "" and CheckSubRules(data, inCombat, currentZone) then
 local endTime = activeICDTimers[data.name:lower()]
-if endTime and endTime > curTime then
-uniqueAlerts["RAY: КД " .. data.name .. " (" .. math.ceil(endTime - curTime) .. " сек)"] = true
+local isAuraActive = CheckAuraGroup("player", data.name, "HELPFUL", false, false)
+if not isAuraActive and endTime and endTime > curTime then
+local remainingCD = endTime - curTime
+local baseCD, alertWindow = tostring(data.seconds or "45"):match("([^/]+)/?([^/]*)")
+alertWindow = tonumber(alertWindow) or 0
+if alertWindow == 0 or remainingCD <= alertWindow then
+uniqueAlerts["RAY: КД " .. data.name .. " (" .. math.ceil(remainingCD) .. " сек)"] = true
+end
 end
 end
 end
@@ -345,18 +341,28 @@ if isUsable then isActive = true stacks = 0 timeLeft = 9999 end
 end
 local needAlert, customReason = false, ""
 if not isActive then
-if not spellData.isProc and not spellData.isStackProgress and not spellData.isCombo then needAlert = true end
+if spellData.isStackProgress and limitStacks > 0 then
+needAlert = true
+customReason = " (0/" .. limitStacks .. prefix .. ")"
+elseif not spellData.isProc and not spellData.isCombo then
+needAlert = true
+end
 else
 if spellData.isHideCap and limitStacks > 0 and (stacks >= limitStacks) then
 if userAlertTime > 0 and timeLeft <= userAlertTime then needAlert = true customReason = " (" .. timeLeft .. " сек)" end
-elseif spellData.isStackProgress and limitStacks > 0 and (stacks < limitStacks) then
-needAlert = true customReason = " (" .. stacks .. "/" .. limitStacks .. prefix .. ")"
+elseif spellData.isStackProgress and limitStacks > 0 then
+if stacks < limitStacks then
+needAlert = true
+customReason = " (" .. stacks .. "/" .. limitStacks .. prefix .. ")"
+else
+needAlert = false
+end
 else
 if limitStacks > 0 and (stacks <= limitStacks) then
 needAlert = true customReason = " (Осталось: " .. stacks .. prefix .. ")"
 elseif userAlertTime > 0 and timeLeft <= userAlertTime then
 needAlert = true customReason = " (" .. timeLeft .. " сек)"
-elseif spellData.isProc or spellData.isStackProgress or spellData.isCombo then
+elseif spellData.isProc or spellData.isCombo then
 needAlert = true
 local displayStacks = (stacks > 0 and limitStacks > 0) and (" (" .. stacks .. prefix .. ")") or ""
 local displayTime = (userAlertTime > 0 and timeLeft <= userAlertTime and timeLeft < 9000) and (" " .. timeLeft .. " сек") or ""
@@ -410,7 +416,8 @@ for _, data in ipairs(RAY_Config.specSettings[currentSpec].icds) do
 if type(data) == "table" and data.name then
 local nameLower = data.name:lower()
 if nameLower == combatSpellLower or nameLower == combatSpellID then
-activeICDTimers[nameLower] = GetTime() + (tonumber(data.seconds) or 45)
+local baseCD = tostring(data.seconds or "45"):match("([^/]+)")
+activeICDTimers[nameLower] = GetTime() + (tonumber(baseCD) or 45)
 CheckAllAuras()
 break
 end
@@ -445,7 +452,7 @@ CheckAllAuras()
 end
 end
 end)
-for _, e in ipairs({"UNIT_AURA", "PLAYER_TARGET_CHANGED", "PLAYER_REGEN_DISABLED", "PLAYER_REGEN_ENABLED", "ACTIONBAR_UPDATE_COOLDOWN", "BAG_UPDATE_COOLDOWN", "ACTIVE_TALENT_GROUP_CHANGED", "ZONE_CHANGED_NEW_AREA"}) do
+for _, e in ipairs({"UNIT_AURA", "UNIT_INVENTORY_CHANGED", "PLAYER_TARGET_CHANGED", "PLAYER_REGEN_DISABLED", "PLAYER_REGEN_ENABLED", "ACTIONBAR_UPDATE_COOLDOWN", "BAG_UPDATE_COOLDOWN", "ACTIVE_TALENT_GROUP_CHANGED", "ZONE_CHANGED_NEW_AREA"}) do
 engineEvents:RegisterEvent(e)
 end
 engineEvents:SetScript("OnEvent", function(self, event) CheckAllAuras() end)
@@ -472,7 +479,7 @@ mainCb:SetScript("OnShow", function(self) self:SetChecked(RAY_Config.enabled) en
 mainCb:SetScript("OnClick", function(self)
 RAY_Config.enabled = self:GetChecked() and true or false
 if RAY_Config.enabled then
-for _, e in ipairs({"UNIT_AURA", "PLAYER_TARGET_CHANGED", "PLAYER_REGEN_DISABLED", "PLAYER_REGEN_ENABLED", "ACTIONBAR_UPDATE_COOLDOWN", "BAG_UPDATE_COOLDOWN", "ACTIVE_TALENT_GROUP_CHANGED", "ZONE_CHANGED_NEW_AREA"}) do engineEvents:RegisterEvent(e) end
+for _, e in ipairs({"UNIT_AURA", "UNIT_INVENTORY_CHANGED", "PLAYER_TARGET_CHANGED", "PLAYER_REGEN_DISABLED", "PLAYER_REGEN_ENABLED", "ACTIONBAR_UPDATE_COOLDOWN", "BAG_UPDATE_COOLDOWN", "ACTIVE_TALENT_GROUP_CHANGED", "ZONE_CHANGED_NEW_AREA"}) do engineEvents:RegisterEvent(e) end
 CheckAllAuras()
 else
 engineEvents:UnregisterAllEvents()
@@ -561,7 +568,7 @@ listFrame:SetSize(210, 110) listFrame:SetPoint("TOPLEFT", editBox, "TOPLEFT", 4,
 UIDropDownMenu_Initialize(dropDown, function()
 local currentIdx = GetActiveIndex() local activeTarget = currentIdx and RAY_Config.spells[currentIdx].target or tempConfig.target local info = UIDropDownMenu_CreateInfo()
 info.text = "Цель: Игрок" info.value = "player" info.checked = (activeTarget == "player") info.func = function() local ai = GetActiveIndex() if ai and RAY_Config.spells[ai] then RAY_Config.spells[ai].target = "player" else tempConfig.target = "player" end UIDropDownMenu_SetSelectedValue(dropDown, "player") UIDropDownMenu_SetText(dropDown, "Цель: Игрок") CheckAllAuras() CloseDropDownMenus() end UIDropDownMenu_AddButton(info)
-info.text = "Цель: Таргет" info.value = "target" info.checked = (activeTarget == "target") info.func = function() local ai = GetActiveIndex() if ai and RAY_Config.spells[ai] then RAY_Config.spells[ai].target = "target" else tempConfig.target = "target" end UIDropDownMenu_SetSelectedValue(dropDown, "target") UIDropDownMenu_SetText(dropDown, "Цель: Таргет") CheckAllAuras() CloseDropDownMenus() end UIDropDownMenu_AddButton(info)
+info.text = "Цель: Тек. цель" info.value = "target" info.checked = (activeTarget == "target") info.func = function() local ai = GetActiveIndex() if ai and RAY_Config.spells[ai] then RAY_Config.spells[ai].target = "target" else tempConfig.target = "target" end UIDropDownMenu_SetSelectedValue(dropDown, "target") UIDropDownMenu_SetText(dropDown, "Цель: Тек. цель") CheckAllAuras() CloseDropDownMenus() end UIDropDownMenu_AddButton(info)
 end)
 btnOk:SetScript("OnClick", function()
 local typedName = editBox:GetText() if not typedName or typedName == "" or typedName == " " then return end local idx = GetActiveIndex()
@@ -579,7 +586,7 @@ rightUI = CreateColumn(false, "DEBUFF", "|cffFF4444")
 selectBuff = function(index)
 selectedBuffIndex = index for _, btn in ipairs(listButtonsBuff) do btn:UnlockHighlight() end
 if index and RAY_Config.spells[index] then
-local data = RAY_Config.spells[index] leftUI.editBox:SetText(data.name or "") UIDropDownMenu_SetSelectedValue(leftUI.dropDown, data.target or "player") UIDropDownMenu_SetText(leftUI.dropDown, data.target == "target" and "Цель: Таргет" or "Цель: Игрок") leftUI.sliderTime:SetValue(data.alertTime or 0) leftUI.sliderStacks:SetValue(data.minStacks or 0) leftUI.cbCombat:SetChecked(data.onlyInCombat == true) leftUI.cbWorld:SetChecked(data.zoneWorld == true) leftUI.cbParty:SetChecked(data.zoneParty == true) leftUI.cbRaid:SetChecked(data.zoneRaid == true) leftUI.cbCooldown:SetChecked(data.isCooldown == true) leftUI.cbProc:SetChecked(data.isProc == true) leftUI.cbCombo:SetChecked(data.isCombo == true) leftUI.cbWeapon:SetChecked(data.isWeaponText == true) leftUI.cbProgress:SetChecked(data.isStackProgress == true) leftUI.cbHideCap:SetChecked(data.isHideCap == true)
+local data = RAY_Config.spells[index] leftUI.editBox:SetText(data.name or "") UIDropDownMenu_SetSelectedValue(leftUI.dropDown, data.target or "player") UIDropDownMenu_SetText(leftUI.dropDown, data.target == "target" and "Цель: Тек. цель" or "Цель: Игрок") leftUI.sliderTime:SetValue(data.alertTime or 0) leftUI.sliderStacks:SetValue(data.minStacks or 0) leftUI.cbCombat:SetChecked(data.onlyInCombat == true) leftUI.cbWorld:SetChecked(data.zoneWorld == true) leftUI.cbParty:SetChecked(data.zoneParty == true) leftUI.cbRaid:SetChecked(data.zoneRaid == true) leftUI.cbCooldown:SetChecked(data.isCooldown == true) leftUI.cbProc:SetChecked(data.isProc == true) leftUI.cbCombo:SetChecked(data.isCombo == true) leftUI.cbWeapon:SetChecked(data.isWeaponText == true) leftUI.cbProgress:SetChecked(data.isStackProgress == true) leftUI.cbHideCap:SetChecked(data.isHideCap == true)
 else
 leftUI.editBox:SetText("") leftUI.sliderTime:SetValue(0) leftUI.sliderStacks:SetValue(0)
 leftUI.cbCombat:SetChecked(false) leftUI.cbWorld:SetChecked(false) leftUI.cbParty:SetChecked(false) leftUI.cbRaid:SetChecked(false)
@@ -590,12 +597,12 @@ end
 selectDebuff = function(index)
 selectedDebuffIndex = index for _, btn in ipairs(listButtonsDebuff) do btn:UnlockHighlight() end
 if index and RAY_Config.spells[index] then
-local data = RAY_Config.spells[index] rightUI.editBox:SetText(data.name or "") UIDropDownMenu_SetSelectedValue(rightUI.dropDown, data.target or "target") UIDropDownMenu_SetText(rightUI.dropDown, data.target == "target" and "Цель: Таргет" or "Цель: Игрок") rightUI.sliderTime:SetValue(data.alertTime or 0) rightUI.sliderStacks:SetValue(data.minStacks or 0) rightUI.cbCombat:SetChecked(data.onlyInCombat == true) rightUI.cbWorld:SetChecked(data.zoneWorld == true) rightUI.cbParty:SetChecked(data.zoneParty == true) rightUI.cbRaid:SetChecked(data.zoneRaid == true) rightUI.cbCooldown:SetChecked(data.isCooldown == true) rightUI.cbProc:SetChecked(data.isProc == true) rightUI.cbCombo:SetChecked(data.isCombo == true) rightUI.cbWeapon:SetChecked(data.isWeaponText == true) rightUI.cbProgress:SetChecked(data.isStackProgress == true) rightUI.cbHideCap:SetChecked(data.isHideCap == true)
+local data = RAY_Config.spells[index] rightUI.editBox:SetText(data.name or "") UIDropDownMenu_SetSelectedValue(rightUI.dropDown, data.target or "target") UIDropDownMenu_SetText(rightUI.dropDown, data.target == "target" and "Цель: Тек. цель" or "Цель: Игрок") rightUI.sliderTime:SetValue(data.alertTime or 0) rightUI.sliderStacks:SetValue(data.minStacks or 0) rightUI.cbCombat:SetChecked(data.onlyInCombat == true) rightUI.cbWorld:SetChecked(data.zoneWorld == true) rightUI.cbParty:SetChecked(data.zoneParty == true) rightUI.cbRaid:SetChecked(data.zoneRaid == true) rightUI.cbCooldown:SetChecked(data.isCooldown == true) rightUI.cbProc:SetChecked(data.isProc == true) rightUI.cbCombo:SetChecked(data.isCombo == true) rightUI.cbWeapon:SetChecked(data.isWeaponText == true) rightUI.cbProgress:SetChecked(data.isStackProgress == true) rightUI.cbHideCap:SetChecked(data.isHideCap == true)
 else
 rightUI.editBox:SetText("") rightUI.sliderTime:SetValue(0) rightUI.sliderStacks:SetValue(0)
 rightUI.cbCombat:SetChecked(false) rightUI.cbWorld:SetChecked(false) rightUI.cbParty:SetChecked(false) rightUI.cbRaid:SetChecked(false)
 rightUI.cbCooldown:SetChecked(false) rightUI.cbProc:SetChecked(false) rightUI.cbCombo:SetChecked(false) rightUI.cbWeapon:SetChecked(false) rightUI.cbProgress:SetChecked(false) rightUI.cbHideCap:SetChecked(false)
-UIDropDownMenu_SetSelectedValue(rightUI.dropDown, "target") UIDropDownMenu_SetText(rightUI.dropDown, "Цель: Таргет")
+UIDropDownMenu_SetSelectedValue(rightUI.dropDown, "target") UIDropDownMenu_SetText(rightUI.dropDown, "Цель: Тек. цель")
 end
 end
 local function SpellButton_OnClick(self)
@@ -651,7 +658,8 @@ scrollChild:SetSize(580, 920) subScrollFrame:SetScrollChild(scrollChild)
 local subTitle = subOptionsPanel:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
 subTitle:SetPoint("TOPLEFT", 16, -14) subTitle:SetText("|cff00FFFFАвтоматика Спеков, Стоек и Комплектов Экипировки|r")
 local subNotice = subOptionsPanel:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-subNotice:SetPoint("TOPLEFT", 16, -34) subNotice:SetTextColor(1, 0.8, 0) subNotice:SetText("ВАЖНО: Для КД тринек вводите имя БАФФА прока (напр. 'Сумеречное исступление')!")
+subNotice:SetPoint("TOPLEFT", 16, -34) subNotice:SetTextColor(1, 0.8, 0)
+subNotice:SetText("ВАЖНО: Формат КД тринек: КД/ОкноПоказа (Например: '45/5' - КД 45 сек, показывать за 5 сек до конца)")
 local radarCb = CreateFrame("CheckButton", "RAY_RadarDebugCheckboxUnique", subOptionsPanel, "InterfaceOptionsCheckButtonTemplate")
 radarCb:SetPoint("TOPLEFT", 16, -54)
 local radarCbText = radarCb:CreateFontString(nil, "OVERLAY", "GameFontNormal")
@@ -704,8 +712,14 @@ local isIcd = (storageKey == "icds")
 local textStr = type(data) == "table" and ((data.name or "Ошибка") .. (isIcd and (" ("..(data.seconds or "45").."с)") or "")) or tostring(data)
 local btn = pBlock[idx]
 if not btn then
-btn = CreateFrame("Button", nil, pBlock.listFrame) btn:SetSize(215, 20) btn:SetNormalFontObject("GameFontNormal") btn:SetHighlightTexture("Interface\Buttons\UI-Listbox-Highlight")
-local del = CreateFrame("Button", nil, btn, "UIPanelCloseButton") del:SetSize(18, 18) del:SetPoint("RIGHT", btn, "RIGHT", 0, 0) btn.del = del
+btn = CreateFrame("Button", nil, pBlock.listFrame)
+btn:SetSize(210, 20)
+btn:SetNormalFontObject("GameFontNormal")
+btn:SetHighlightTexture("Interface\Buttons\UI-Listbox-Highlight")
+local del = CreateFrame("Button", nil, btn, "UIPanelCloseButton")
+del:SetSize(18, 18)
+del:SetPoint("RIGHT", btn, "RIGHT", 0, 0)
+btn.del = del
 pBlock[idx] = btn
 end
 btn.specNum = specNum btn.storageKey = storageKey btn.itemIndex = idx btn.isIcd = isIcd
@@ -713,6 +727,8 @@ btn.activeIndices = pBlock.activeIndices btn.boxName = pBlock.boxName btn.boxSec
 btn.cbCombat = pBlock.cbCombat btn.cbWorld = pBlock.cbWorld btn.cbParty = pBlock.cbParty btn.cbRaid = pBlock.cbRaid
 btn:SetScript("OnClick", SubButton_OnClick)
 btn.del:SetScript("OnClick", SubDeleteButton_OnClick)
+btn:ClearAllPoints()
+btn:SetPoint("TOPLEFT", 0, -((idx - 1) * 22))
 btn:SetText(textStr) btn:Show() SetTooltip(btn.del, "Удалить эту запись.")
 if pBlock.activeIndices[storageKey] == idx then btn:LockHighlight() else btn:UnlockHighlight() end
 end
@@ -723,7 +739,7 @@ local function BuildInputFieldBlock(labelTxt, yBlock, storageKey, tText, isIcd)
 local editBox, boxName, boxSec
 if isIcd then
 boxName = CreateBlizzardEditBox(scrollChild, hOffsetSub, yBlock - 20, 140, "RAY_SubIcdName_"..specNum..""..storageKey) SetTooltip(boxName, tText)
-boxSec = CreateBlizzardEditBox(scrollChild, hOffsetSub + 145, yBlock - 20, 35, "RAY_SubIcdSec"..specNum..""..storageKey) boxSec:SetNumeric(true) boxSec:SetMaxLetters(3)
+boxSec = CreateBlizzardEditBox(scrollChild, hOffsetSub + 145, yBlock - 20, 35, "RAY_SubIcdSec"..specNum..""..storageKey) boxSec:SetMaxLetters(7)
 editBox = boxName
 else
 editBox = CreateBlizzardEditBox(scrollChild, hOffsetSub, yBlock - 20, 180, "RAY_SubInp"..specNum.."_"..storageKey) SetTooltip(editBox, tText)
@@ -748,7 +764,9 @@ local cbCombat = CreateSubCheckbox("Включать только в бою", 50
 local cbWorld  = CreateSubCheckbox("Отслеживать в открытом мире", 72, "zoneWorld")
 local cbParty  = CreateSubCheckbox("Отслеживать в подземельях", 94, "zoneParty")
 local cbRaid   = CreateSubCheckbox("Отслеживать в рейдовых зонах", 116, "zoneRaid")
-local listFrame = CreateFrame("Frame", nil, scrollChild) listFrame:SetSize(235, 85) listFrame:SetPoint("TOPLEFT", editBox, "TOPLEFT", 4, -145)
+local listFrame = CreateFrame("Frame", nil, scrollChild)
+listFrame:SetSize(235, 85)
+listFrame:SetPoint("TOPLEFT", editBox, "TOPLEFT", 4, -145)
 listButtonsSub[specNum][storageKey].listFrame = listFrame
 listButtonsSub[specNum][storageKey].activeIndices = activeIndices
 listButtonsSub[specNum][storageKey].boxName = boxName
@@ -770,7 +788,7 @@ subOptionsPanel:HookScript("OnShow", function() activeIndices[storageKey] = nil 
 end
 BuildInputFieldBlock("Комплект экипировки:", -25, "sets", "Введите название комплекта экипировки.", false)
 BuildInputFieldBlock("Обязательная стойка / бафф:", -285, "buffs", "Введите название стойки или баффа.", false)
-BuildInputFieldBlock("Имя ПРОКА триньки / КД:", -545, "icds", "Введите точное название баффа от триньки.", true)
+BuildInputFieldBlock("Имя ПРОКА триньки / КД:", -545, "icds", "Формат: КД/ОкноПоказа (например, 45/5)", true)
 end
 CreateSubPageBlock(1, true, "|cff44FF44")
 CreateSubPageBlock(2, false, "|cffFF4444")
