@@ -1,7 +1,7 @@
 ## Interface: 30300
 ## Title: RAY - Remember About Yourself
 ## Notes: Напоминает о важных баффах на себе.
-## Author: Высшая
+## Author: Highest-V
 ## Version: 3.0
 ## X-Date: 2026-10-11
 ## SavedVariablesPerCharacter: RAY_Config
