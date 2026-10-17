@@ -341,59 +341,97 @@ local isUsable = IsUsableSpell(spellData.name)
 if isUsable then isActive = true stacks = 0 timeLeft = 9999 end
 end
 local needAlert, customReason = false, ""
-if not isActive then
-if spellData.isStackProgress and limitStacks > 0 then
-needAlert = true
-customReason = " (0/" .. limitStacks .. prefix .. ")"
-elseif not spellData.isProc and not spellData.isCombo then
-needAlert = true
-end
-else
-if spellData.isHideCap and limitStacks > 0 and (stacks >= limitStacks) then
-if userAlertTime > 0 and timeLeft <= userAlertTime then needAlert = true customReason = " (" .. timeLeft .. " сек)" end
-elseif spellData.isStackProgress and limitStacks > 0 then
-if stacks < limitStacks then
-needAlert = true
-customReason = " (" .. stacks .. "/" .. limitStacks .. prefix .. ")"
-else
-needAlert = false
-end
-else
-if limitStacks > 0 and (stacks <= limitStacks) then
-needAlert = true customReason = " (Осталось: " .. stacks .. prefix .. ")"
-elseif userAlertTime > 0 and timeLeft <= userAlertTime then
-needAlert = true customReason = " (" .. timeLeft .. " сек)"
-elseif spellData.isProc or spellData.isCombo then
-needAlert = true
-local displayStacks = (stacks > 0 and limitStacks > 0) and (" (" .. stacks .. prefix .. ")") or ""
-local displayTime = (userAlertTime > 0 and timeLeft <= userAlertTime and timeLeft < 9000) and (" " .. timeLeft .. " сек") or ""
-customReason = displayStacks .. displayTime
-end
-end
-end
-if limitStacks == 0 then
-customReason = string.gsub(customReason, "%s*%(.-ст%)%s*", "")
-customReason = string.gsub(customReason, "%s*%(Осталось:.-%)%s*", "")
-end
-if needAlert then
-local displayName = string.match(spellData.name, "[^|/]+") or spellData.name
-if spellData.isCombo then displayName = "Серия приёмов (КП)" end
-uniqueAlerts[(spellData.mode == "DEBUFF" and "RAY: Наложи дебафф [" or spellData.isProc and "RAY: Прок! [" or "RAY: Обнови бафф [") .. displayName .. "]" .. customReason] = true
-end
+                local isMax = false
+
+                if not isActive then
+                    if spellData.isStackProgress and limitStacks > 0 then
+                        needAlert = true
+                        customReason = " (0/" .. limitStacks .. prefix .. ")"
+                    elseif not spellData.isProc and not spellData.isCombo then
+                        needAlert = true
+                    end
+                else
+                    if limitStacks > 0 and stacks >= limitStacks then
+                        isMax = true
+                    end
+
+                    if spellData.isHideCap and isMax then
+                        if userAlertTime > 0 and timeLeft <= userAlertTime then
+                            needAlert = true
+                            customReason = " (" .. timeLeft .. " сек)"
+                        else
+                            needAlert = false
+                        end
+                    elseif spellData.isStackProgress and limitStacks > 0 then
+                        needAlert = true
+                        customReason = " (" .. stacks .. "/" .. limitStacks .. prefix .. ")"
+                    else
+                        if limitStacks > 0 and (stacks <= limitStacks) and not (spellData.isProc or spellData.isCombo) then
+                            needAlert = true 
+                            customReason = " (Осталось: " .. stacks .. prefix .. ")"
+                        elseif userAlertTime > 0 and timeLeft <= userAlertTime then
+                            needAlert = true 
+                            customReason = " (" .. timeLeft .. " сек)"
+                        elseif spellData.isProc or spellData.isCombo then
+                            needAlert = true
+                            local displayStacks = (stacks > 0 and limitStacks > 0) and (" (" .. stacks .. prefix .. ")") or ""
+                            local displayTime = (userAlertTime > 0 and timeLeft <= userAlertTime and timeLeft < 9000) and (" " .. timeLeft .. " сек") or ""
+                            customReason = displayStacks .. displayTime
+                        end
+                    end
+                end
+
+                if needAlert then
+                    local displayName = string.match(spellData.name, "[^|/]+") or spellData.name
+                    if spellData.isCombo then displayName = "Серия приёмов (КП)" end
+                    
+                    local rawAlertText = (spellData.mode == "DEBUFF" and "RAY: Наложи дебафф [" or spellData.isProc and "RAY: Прок! [" or "RAY: Обнови бафф [") .. displayName .. "]" .. customReason
+                    
+                    if isMax or (userAlertTime > 0 and timeLeft <= userAlertTime and isActive) then
+                        uniqueAlerts["|cffFF0000" .. rawAlertText .. "|r"] = true
+                    else
+                        uniqueAlerts[rawAlertText] = true
+                    end
+                end
 end
 end
 end
 end
 wipe(alertStringTable)
+local hasMaxStacks = false
 for k, _ in pairs(uniqueAlerts) do
-table.insert(alertStringTable, k)
+    table.insert(alertStringTable, k)
+    -- Проверяем, есть ли в строке оповещения индикатор, что стаки собраны (например, "5/5" или "5 КП")
+    for _, spellData in ipairs(RAY_Config.spells or {}) do
+        local limitStacks = tonumber(spellData.minStacks) or 0
+        if limitStacks > 0 and not spellData.isHideCap and not spellData.isStackProgress then
+            -- Если это обычное отслеживание стаков/КП, то при достижении лимита customReason не содержит (X/Y),
+            -- но мы можем перекрасить надпись, если isActive вернул полное количество стаков.
+            -- Однако самый надежный и простой способ для всех режимов — найти совпадение собранного капа в строке:
+            local prefix = spellData.isCombo and " КП" or " ст"
+            if string.find(k, limitStacks .. prefix, 1, true) or (spellData.isStackProgress and string.find(k, limitStacks .. "/" .. limitStacks, 1, true)) then
+                hasMaxStacks = true
+            end
+        elseif limitStacks > 0 and spellData.isStackProgress then
+            if string.find(k, limitStacks .. "/" .. limitStacks, 1, true) then
+                hasMaxStacks = true
+            end
+        end
+    end
 end
+
 if #alertStringTable > 0 then
-text:SetText(table.concat(alertStringTable, "\n"))
-if not frame:IsShown() then frame:Show() animGroup:Play() end
+    text:SetText(table.concat(alertStringTable, "\n"))
+    -- Меняем цвет текста: если кап стаков собран — ярко-красный (1, 0, 0), иначе стандартный бирюзовый (0, 1, 0.9)
+    if hasMaxStacks then
+        text:SetTextColor(1, 0, 0)
+    else
+        text:SetTextColor(0, 1, 0.9)
+    end
+    if not frame:IsShown() then frame:Show() animGroup:Play() end
 else
-frame:Hide()
-animGroup:Stop()
+    frame:Hide()
+    animGroup:Stop()
 end
 end
 -- =========================================================================
