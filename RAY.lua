@@ -73,6 +73,60 @@ local function SetTooltip(widget, uText)
     widget:SetScript("OnLeave", function() GameTooltip:Hide() end)
 end
 
+-- Вспомогательная функция получения имени и цвета класса автора ауры
+local function GetCasterColoredName(casterUnit)
+    if not casterUnit then return "Напарник" end
+    local name = UnitName(casterUnit)
+    if not name then return "Напарник" end
+    local _, class = UnitClass(casterUnit)
+    if class and RAID_CLASS_COLORS[class] then
+        local c = RAID_CLASS_COLORS[class]
+        return string.format("|cff%02x%02x%02x%s|r", c.r*255, c.g*255, c.b*255, name)
+    end
+    return name
+end
+
+-- Функция создания отдельного фрейма для заклинания (Пулл окон)
+local function GetOrCreateCustomFrame(spellName)
+    if customFramesPool[spellName] then return customFramesPool[spellName] end
+    
+    local cf = CreateFrame("Frame", "RAY_CustomFrame_"..spellName:gsub("%s", ""), UIParent)
+    cf:SetSize(400, 50)
+    cf:SetPoint("CENTER", 0, 50)
+    cf:SetMovable(true)
+    cf:RegisterForDrag("LeftButton")
+    cf:SetScript("OnDragStart", function(self) self:StartMoving() end)
+    cf:SetScript("OnDragStop", function(self) 
+        self:StopMovingOrSizing()
+        local p, _, rp, x, y = self:GetPoint()
+        if not RAY_Config.customFramePositions then RAY_Config.customFramePositions = {} end
+        RAY_Config.customFramePositions[spellName] = { point = p, x = x, y = y }
+    end)
+    
+    cf.bg = cf:CreateTexture(nil, "BACKGROUND")
+    cf.bg:SetAllPoints()
+    cf.bg:SetTexture(0.1, 0.5, 0.1, 0.4)
+    cf.bg:Hide()
+    
+    cf.border = cf:CreateTexture(nil, "OVERLAY")
+    cf.border:SetAllPoints()
+    cf.border:SetTexture("Interface\\Tooltips\\UI-Tooltip-Border")
+    cf.border:Hide()
+    
+    cf.text = cf:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+    cf.text:SetPoint("CENTER", cf, "CENTER")
+    cf.text:SetFont("Fonts\\FRIZQT__.TTF", 24, "OUTLINE")
+    
+    cf.anim = cf:CreateAnimationGroup()
+    local fOut = cf.anim:CreateAnimation("Alpha") fOut:SetChange(-0.5) fOut:SetDuration(0.5) fOut:SetOrder(1)
+    local fIn = cf.anim:CreateAnimation("Alpha") fIn:SetChange(0.5) fIn:SetDuration(0.5) fIn:SetOrder(2)
+    cf.anim:SetLooping("REPEAT")
+    
+    cf:Hide()
+    customFramesPool[spellName] = cf
+    return cf
+end
+
 RAY_EventFrame:RegisterEvent("ADDON_LOADED")
 RAY_EventFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
 RAY_EventFrame:SetScript("OnEvent", function(self, event, arg1)
@@ -86,6 +140,7 @@ RAY_EventFrame:SetScript("OnEvent", function(self, event, arg1)
             if RAY_Config.boxHunterEnabled == nil then RAY_Config.boxHunterEnabled = true end
             if not RAY_Config.spells then RAY_Config.spells = {} end
             if not RAY_Config.framePos then RAY_Config.framePos = { point = "CENTER", x = 0, y = 150 } end
+            if not RAY_Config.customFramePositions then RAY_Config.customFramePositions = {} end
             if not RAY_Config.specSettings then 
                 RAY_Config.specSettings = CopyTable(defaultSettings.specSettings)
             else
@@ -100,6 +155,7 @@ RAY_EventFrame:SetScript("OnEvent", function(self, event, arg1)
         
         for _, spell in ipairs(RAY_Config.spells or {}) do
             if not spell.color then spell.color = GetDefaultColor() end
+            if spell.isExternalOnly == nil then spell.isExternalOnly = false end
         end
 
         if RAY_MainFrame and RAY_Config.framePos then
@@ -171,88 +227,90 @@ local function CheckEquipmentSetFull(setName)
     local setLower = setName:lower()
     
     for i = 1, numSets do 
-        local name = GetEquipmentSetInfo(i)
-        if name and name:lower() == setLower then 
-            foundIndex = i 
-            break 
-        end 
-    end
-    
-    if not foundIndex then return "NOT_FOUND" end
-    
-    local setItemIDs = GetEquipmentSetItemIDs(GetEquipmentSetInfo(foundIndex))
-    if not setItemIDs then return "NOT_FOUND" end
-    
-    for slotID = 1, 18 do
-        local savedItemID = setItemIDs[slotID]
-        if savedItemID and savedItemID > 1 and GetInventoryItemID("player", slotID) ~= savedItemID then 
-            return "PARTIAL" 
-        end
-    end
-    return "OK"
+local name = GetEquipmentSetInfo(i)
+if name and name:lower() == setLower then
+foundIndex = i
+break
 end
-
+end
+if not foundIndex then return "NOT_FOUND" end
+local setItemIDs = GetEquipmentSetItemIDs(GetEquipmentSetInfo(foundIndex))
+if not setItemIDs then return "NOT_FOUND" end
+for slotID = 1, 18 do
+local savedItemID = setItemIDs[slotID]
+if savedItemID and savedItemID > 1 and GetInventoryItemID("player", slotID) ~= savedItemID then
+return "PARTIAL"
+end
+end
+return "OK"
+end
 local function CheckCustomGearEnchant(enchantName)
-    local nameLower = enchantName:lower()
-    local slotsToScan = { 16, 17, 10, 15 }
-    for idx = 1, 4 do
-        local slotID = slotsToScan[idx]
-        local start, duration = GetInventoryItemCooldown("player", slotID)
-        if start and start > 0 and duration and duration > 1.5 then 
-            return true, 1, math.ceil(duration - (GetTime() - start))
-        end
-        textScanFrameMain:ClearLines()
-        textScanFrameMain:SetInventoryItem("player", slotID)
-        for i = 1, 30 do
-            local lineText = _G["RAY_EnchantScannerTooltipMainTextLeft"..i]
-            local txt = lineText and lineText:GetText()
-            if txt and txt:lower():find(nameLower, 1, true) then
-                if slotID == 16 or slotID == 17 then
-                    local hasMain, mainExp, _, _, hasOff, offExp = GetWeaponEnchantInfo()
-                    if slotID == 16 and hasMain and mainExp then return true, 1, math.floor(mainExp / 1000) end
-                    if slotID == 17 and hasOff and offExp then return true, 1, math.floor(offExp / 1000) end
-                else
-                    return true, 1, 0
-                end
-            end
-        end
-    end
-    return false, 0, 0
+local nameLower = enchantName:lower()
+local slotsToScan = { 16, 17, 10, 15 }
+for idx = 1, 4 do
+local slotID = slotsToScan[idx]
+local start, duration = GetInventoryItemCooldown("player", slotID)
+if start and start > 0 and duration and duration > 1.5 then
+return true, 1, math.ceil(duration - (GetTime() - start)), nil
 end
-
+textScanFrameMain:ClearLines()
+textScanFrameMain:SetInventoryItem("player", slotID)
+for i = 1, 30 do
+local lineText = _G["RAY_EnchantScannerTooltipMainTextLeft"..i]
+local txt = lineText and lineText:GetText()
+if txt and txt:lower():find(nameLower, 1, true) then
+if slotID == 16 or slotID == 17 then
+local hasMain, mainExp, _, _, hasOff, offExp = GetWeaponEnchantInfo()
+if slotID == 16 and hasMain and mainExp then return true, 1, math.floor(mainExp / 1000), nil end
+if slotID == 17 and hasOff and offExp then return true, 1, math.floor(offExp / 1000), nil end
+else
+return true, 1, 0, nil
+end
+end
+end
+end
+return false, 0, 0, nil
+end
 local function BuildAuraCache(target, cacheTable)
-    wipe(cacheTable)
-    for i = 1, 40 do
-        local name, _, _, count, _, _, expirationTime, _, _, _, spellID = UnitAura(target, i, "HELPFUL")
-        if not name then break end
-        local rem = (expirationTime and expirationTime > 0) and math.max(0, math.floor(expirationTime - GetTime())) or 0
-        local data = { count = count or 0, rem = rem, filter = "HELPFUL" }
-        cacheTable[name:lower()] = data cacheTable[tostring(spellID)] = data
-    end
-    for i = 1, 40 do
-local name, _, _, count, _, _, expirationTime, _, _, _, spellID = UnitAura(target, i, "HARMFUL")
+wipe(cacheTable)
+for i = 1, 40 do
+local name, _, _, count, _, _, expirationTime, caster, _, _, spellID = UnitAura(target, i, "HELPFUL")
 if not name then break end
 local rem = (expirationTime and expirationTime > 0) and math.max(0, math.floor(expirationTime - GetTime())) or 0
-local data = { count = count or 0, rem = rem, filter = "HARMFUL" }
+local data = { count = count or 0, rem = rem, filter = "HELPFUL", caster = caster }
+cacheTable[name:lower()] = data cacheTable[tostring(spellID)] = data
+end
+for i = 1, 40 do
+local name, _, _, count, _, _, expirationTime, caster, _, _, spellID = UnitAura(target, i, "HARMFUL")
+if not name then break end
+local rem = (expirationTime and expirationTime > 0) and math.max(0, math.floor(expirationTime - GetTime())) or 0
+local data = { count = count or 0, rem = rem, filter = "HARMFUL", caster = caster }
 cacheTable[name:lower()] = data cacheTable[tostring(spellID)] = data
 end
 end
 local function FindAuraCached(target, nameOrId, filter, isCombo, isWeaponText)
-if isCombo then local cp = GetComboPoints("player", "target") if cp and cp > 0 then return true, cp, 0 else return false, 0, 0 end end
-if isWeaponText then local hasEnchant, fakeStacks, secondsLeft = CheckCustomGearEnchant(nameOrId) return hasEnchant, fakeStacks, secondsLeft end
+if isCombo then local cp = GetComboPoints("player", "target") if cp and cp > 0 then return true, cp, 0, nil else return false, 0, 0, nil end end
+if isWeaponText then local hasEnchant, fakeStacks, secondsLeft = CheckCustomGearEnchant(nameOrId) return hasEnchant, fakeStacks, secondsLeft, nil end
 local cache = (target == "target") and cacheTargetAuras or cachePlayerAuras
 local aura = cache[tostring(nameOrId):lower()]
-if aura and aura.filter == filter then return true, aura.count, aura.rem end
-return false, 0, 0
+if aura and aura.filter == filter then
+return true, aura.count, aura.rem, aura.caster
+end
+return false, 0, 0, nil
 end
 local function CheckAuraGroup(target, spellLine, filter, isCombo, isWeaponText)
-local active, currentStacks, minRemaining = false, 0, 999999
+local active, currentStacks, minRemaining, lastCaster = false, 0, 999999, nil
 for condition in string.gmatch(spellLine, "[^|/]+") do
 condition = condition:match("^%s*(.-)%s*$")
-local found, stacks, timeLeft = FindAuraCached(target, condition, filter, isCombo, isWeaponText)
-if found then active = true currentStacks = math.max(currentStacks, stacks) if timeLeft < minRemaining then minRemaining = timeLeft end end
+local found, stacks, timeLeft, caster = FindAuraCached(target, condition, filter, isCombo, isWeaponText)
+if found then
+active = true
+currentStacks = math.max(currentStacks, stacks)
+if timeLeft < minRemaining then minRemaining = timeLeft end
+if caster then lastCaster = caster end
 end
-return active, currentStacks, minRemaining
+end
+return active, currentStacks, minRemaining, lastCaster
 end
 local engineEvents = CreateFrame("Frame")
 CheckAllAuras = function()
@@ -268,7 +326,8 @@ local inCombat = UnitAffectingCombat("player")
 local currentZone = GetCurrentZoneType()
 local currentSpec = GetActiveTalentGroup() or 1
 local curTime = GetTime()
-wipe(uniqueAlerts) local customAlertsByWindow = {}
+wipe(uniqueAlerts)
+local customAlertsByWindow = {}
 BuildAuraCache("player", cachePlayerAuras)
 if UnitExists("target") and not UnitIsDead("target") then BuildAuraCache("target", cacheTargetAuras) else wipe(cacheTargetAuras) end
 if sylvanasAlertActive and RAY_Config.boxHunterEnabled then
@@ -331,12 +390,28 @@ else
 local target = spellData.target or "player"
 if target ~= "target" or (UnitExists("target") and not UnitIsDead("target")) then
 local filter = (spellData.mode == "DEBUFF") and "HARMFUL" or "HELPFUL"
-local isActive, stacks, timeLeft = CheckAuraGroup(target, spellData.name, filter, spellData.isCombo, spellData.isWeaponText)
-if not isActive and spellData.isProc and IsUsableSpell(spellData.name) then isActive = true stacks = 0 timeLeft = 9999 end
+local isActive, stacks, timeLeft, caster = CheckAuraGroup(target, spellData.name, filter, spellData.isCombo, spellData.isWeaponText)
+if not isActive and spellData.isProc and IsUsableSpell(spellData.name) then
+isActive = true stacks = 0 timeLeft = 9999
+end
 local needAlert, customReason = false, ""
+-- Специальная инвертированная логика для галочки "Внешние ауры"
+if spellData.isExternalOnly then
+-- Если это внешняя аура, мы реагируем только тогда, когда она АКТИВНА на нас и наложена НЕ нами
+if isActive and caster and caster ~= "player" and caster ~= "vehicle" then
+needAlert = true
+local cName = GetCasterColoredName(caster)
+local displayTime = (timeLeft and timeLeft > 0 and timeLeft < 9000) and (" (" .. timeLeft .. " сек)") or ""
+customReason = " -> " .. cName .. displayTime
+end
+else
+-- Обычный стандартный режим напоминания (кричит, когда баффа нет)
 if not isActive then
-if spellData.isStackProgress and limitStacks > 0 then needAlert = true customReason = " (0/" .. limitStacks .. prefix .. ")"
-elseif not spellData.isProc and not spellData.isCombo then needAlert = true end
+if spellData.isStackProgress and limitStacks > 0 then
+needAlert = true customReason = " (0/" .. limitStacks .. prefix .. ")"
+elseif not spellData.isProc and not spellData.isCombo then
+needAlert = true
+end
 else
 if spellData.isHideCap and limitStacks > 0 and (stacks >= limitStacks) then
 if userAlertTime > 0 and timeLeft <= userAlertTime then needAlert = true customReason = " (" .. timeLeft .. " сек)" end
@@ -353,12 +428,24 @@ customReason = displayStacks .. displayTime
 end
 end
 end
-if limitStacks == 0 then customReason = string.gsub(customReason, "%s%(.-ст%)%s*", ""):gsub("%s*%(Осталось:.-%)%s*", "") end
+end
+if limitStacks == 0 and not spellData.isExternalOnly then
+customReason = string.gsub(customReason, "%s%(.-ст%)%s*", ""):gsub("%s*%(Осталось:.-%)%s*", "")
+end
 if needAlert then
 local displayName = string.match(spellData.name, "[^|/]+") or spellData.name
 if spellData.isCombo then displayName = "Серия приёмов (КП)" end
-local msg = (spellData.mode == "DEBUFF" and "RAY: Наложи дебафф [" or spellData.isProc and "RAY: Прок! [" or "RAY: Обнови бафф [") .. displayName .. "]" .. customReason
-if spellData.isOwnWindow then customAlertsByWindow[spellData.name] = { text = msg, color = spellData.color, size = spellData.customSize } else uniqueAlerts[msg] = true end
+local msg
+if spellData.isExternalOnly then
+msg = "|cff4ECCA3[RAY Эффект]:|r [" .. displayName .. "]" .. customReason
+else
+msg = (spellData.mode == "DEBUFF" and "RAY: Наложи дебафф [" or spellData.isProc and "RAY: Прок! [" or "RAY: Обнови бафф [") .. displayName .. "]" .. customReason
+end
+if spellData.isOwnWindow then
+customAlertsByWindow[spellData.name] = { text = msg, color = spellData.color, size = spellData.customSize }
+else
+uniqueAlerts[msg] = true
+end
 end
 end
 end
@@ -376,7 +463,8 @@ end
 for fWindowKey, cf in pairs(customFramesPool) do
 local data = customAlertsByWindow[fWindowKey]
 if data then
-cf.text:SetText(data.text) local c = data.color or GetDefaultColor() cf.text:SetTextColor(c.r, c.g, c.b)
+cf.text:SetText(data.text)
+local c = data.color or GetDefaultColor() cf.text:SetTextColor(c.r, c.g, c.b)
 local sz = data.size or 24 cf.text:SetFont("Fonts\FRIZQT__.TTF", sz, "OUTLINE")
 if not cf:IsShown() then cf:Show() cf.anim:Play() end
 else
@@ -457,13 +545,29 @@ local enabled = self:GetChecked()
 if enabled then
 frame:EnableMouse(true) dragBg:Show() dragBorder:Show() text:SetText(PASTEL_TITLE .. "[RAY]: Главное окно|r")
 if not frame:IsShown() then frame:Show() animGroup:Play() end
-for fDragKey, cf in pairs(customFramesPool) do
-cf:EnableMouse(true) cf.bg:Show() cf.border:Show() cf.text:SetText("[Окно]: " .. fDragKey)
+-- Принудительно создаем и показываем рамки для ВСЕХ заклинаний, у которых стоит галочка "Окно"
+for _, spellData in ipairs(RAY_Config.spells or {}) do
+if spellData.name and spellData.name ~= "" and spellData.isOwnWindow then
+local cleanName = string.match(spellData.name, "[^|/]+") or spellData.name
+local cf = GetOrCreateCustomFrame(spellData.name)
+cf:EnableMouse(true)
+cf.bg:Show()
+cf.border:Show()
+cf.text:SetText("[Окно]: " .. cleanName)
+-- Загружаем позицию, если сохранена
+if RAY_Config.customFramePositions and RAY_Config.customFramePositions[spellData.name] then
+local pos = RAY_Config.customFramePositions[spellData.name]
+cf:ClearAllPoints()
+cf:SetPoint(pos.point, UIParent, pos.point, pos.x, pos.y)
+end
 if not cf:IsShown() then cf:Show() cf.anim:Play() end
+end
 end
 else
 frame:EnableMouse(false) dragBg:Hide() dragBorder:Hide() animGroup:Stop()
-for fDragHideKey, cf in pairs(customFramesPool) do cf:EnableMouse(false) cf.bg:Hide() cf.border:Hide() cf.anim:Stop() end
+for fDragHideKey, cf in pairs(customFramesPool) do
+cf:EnableMouse(false) cf.bg:Hide() cf.border:Hide() cf.anim:Stop()
+end
 CheckAllAuras()
 end
 end)
@@ -504,7 +608,7 @@ local btnOk = CreateFrame("Button", nil, sChild, "UIPanelButtonTemplate")
 btnOk:SetSize(55, 25) btnOk:SetPoint("LEFT", editBox, "RIGHT", 8, 0) btnOk:SetText(PASTEL_YELLOW.."ОК|r")
 local dropDown = CreateFrame("Frame", "RAY_VDrop_"..panelName, sChild, "UIDropDownMenuTemplate")
 dropDown:SetPoint("TOPLEFT", -2, -75) dropDown:SetSize(150, 25)
-local tempConfig = { onlyInCombat = false, zoneWorld = false, zoneParty = false, zoneRaid = false, target = (modeType == "DEBUFF" and "target" or "player"), isCooldown = false, isProc = false, isCombo = false, isWeaponText = false, isStackProgress = false, isHideCap = false, isOwnWindow = false, customSize = 24, color = GetDefaultColor() }
+local tempConfig = { onlyInCombat = false, zoneWorld = false, zoneParty = false, zoneRaid = false, target = (modeType == "DEBUFF" and "target" or "player"), isCooldown = false, isProc = false, isCombo = false, isWeaponText = false, isStackProgress = false, isHideCap = false, isExternalOnly = false, isOwnWindow = false, customSize = 24, color = GetDefaultColor() }
 local function GetActiveIndex() return _G[globalSelectedIndexRef] end
 local function SetActiveIndex(val) _G[globalSelectedIndexRef] = val end
 local currentY = -120
@@ -531,17 +635,17 @@ local cbCombo    = AddVerticalCheckbox("Это комбо-поинты (КП)", 
 local cbWeapon   = AddVerticalCheckbox("Чары инженерии / оружия", "Сканировать внутренние проки оружия и чар.", "isWeaponText")
 local cbProgress = AddVerticalCheckbox("Показывать набор стаков", "Выводить на экран цифры стаков, например (2/5).", "isStackProgress")
 local cbHideCap  = AddVerticalCheckbox("Скрыть при полном капе стаков", "Прятать текст, когда набран максимум стаков.", "isHideCap")
+local cbExternal = AddVerticalCheckbox("Внешние ауры (Только чужие)", "Специфичный режим: аддон молчит, но как только КТО-ТО ДРУГОЙ наложит на вас этот бафф — выведет сообщение и имя игрока.", "isExternalOnly")
 currentY = currentY - 20
-local specSlider = CreateFrame("Slider", "RAY_VSlider_"..panelName, sChild, "OptionsSliderTemplate")
+local specSlider = CreateFrame("Slider", "RAY_VSlider" .. panelName, sChild, "OptionsSliderTemplate")
 specSlider:SetSize(180, 16) specSlider:SetPoint("TOPLEFT", 12, currentY) specSlider:SetMinMaxValues(12, 48) specSlider:SetValueStep(1)
 local ssText = specSlider:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall") ssText:SetPoint("BOTTOMLEFT", specSlider, "TOPLEFT", 0, 4)
 specSlider:SetScript("OnValueChanged", function(self, value)
 local val = math.floor(value) ssText:SetText("Размер шрифта: " .. val)
 local idx = GetActiveIndex() if idx and RAY_Config.spells[idx] then RAY_Config.spells[idx].customSize = val CheckAllAuras() else tempConfig.customSize = val end
 end)
--- ИДЕАЛЬНОЕ ЖЕСТКОЕ ПОЗИЦИОНИРОВАНИЕ НА ОТДЕЛЬНОЙ СТРОКЕ (Полная ликвидация прыжков координат)
-local rowY = -455
-local cbOwnWindow = CreateFrame("CheckButton", "RAY_OwnWinCheck_"..panelName, sChild, "InterfaceOptionsCheckButtonTemplate")
+local rowY = -483
+local cbOwnWindow = CreateFrame("CheckButton", "RAY_OwnWinCheck" .. panelName, sChild, "InterfaceOptionsCheckButtonTemplate")
 cbOwnWindow:SetSize(26, 26)
 cbOwnWindow:SetPoint("TOPLEFT", sChild, "TOPLEFT", 12, rowY)
 local cbTextObj = _G[cbOwnWindow:GetName() .. "Text"]
@@ -555,10 +659,10 @@ local idx = GetActiveIndex() local val = self:GetChecked() and true or false
 if idx and RAY_Config.spells[idx] then RAY_Config.spells[idx].isOwnWindow = val CheckAllAuras() else tempConfig.isOwnWindow = val end
 end)
 SetTooltip(cbOwnWindow, "Вывести данное оповещение в отдельное независимое окно, которое можно свободно двигать в режиме /move.")
+-- Сдвигаем кнопку палитры со 110 до 160 пикселей вправо, убирая наложение на чекбокс
 local colorBtn = CreateFrame("Button", nil, sChild)
 colorBtn:SetSize(18, 18)
--- Устанавливаем ровно рядом: отступ 110 пикселей по оси X вправо от чекбокса
-colorBtn:SetPoint("TOPLEFT", sChild, "TOPLEFT", 110, rowY - 4)
+colorBtn:SetPoint("TOPLEFT", sChild, "TOPLEFT", 160, rowY - 4)
 local cTex = colorBtn:CreateTexture(nil, "BACKGROUND") cTex:SetAllPoints() cTex:SetTexture(0.5, 0.95, 0.8) colorBtn.tex = cTex
 local border = colorBtn:CreateTexture(nil, "BORDER") border:SetPoint("TOPLEFT", -1, 1) border:SetPoint("BOTTOMRIGHT", 1, -1) border:SetTexture(0.5, 0.5, 0.5, 0.8)
 local colorLbl = colorBtn:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall") colorLbl:SetPoint("LEFT", colorBtn, "RIGHT", 6, 1) colorLbl:SetText("Палитра")
@@ -573,13 +677,12 @@ ColorPickerFrame:SetFrameStrata("TOOLTIP")
 ColorPickerFrame:Hide() ColorPickerFrame:Show()
 end)
 SetTooltip(colorBtn, "Открыть стандартную палитру цветов Blizzard для настройки окраски текста этой ауры.")
--- ПОЛЗУНКИ СДВИНУТЫ ЕЩЕ НИЖЕ С ЖЕСТКИМ ШАГОМ ОТ СТРОКИ ДЕЙСТВИЙ
 currentY = rowY - 40
-local sliderTime = CreateFrame("Slider", "RAY_VTime_"..panelName, sChild, "OptionsSliderTemplate")
+local sliderTime = CreateFrame("Slider", "RAY_VTime"..panelName, sChild, "OptionsSliderTemplate")
 sliderTime:SetSize(110, 16) sliderTime:SetPoint("TOPLEFT", 12, currentY) sliderTime:SetMinMaxValues(0, 300) sliderTime:SetValueStep(1)
 local stText = sliderTime:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall") stText:SetPoint("BOTTOMLEFT", sliderTime, "TOPLEFT", 0, 4)
 sliderTime:SetScript("OnValueChanged", function(self, value) local val = math.floor(value) stText:SetText("Время (сек): " .. val) local idx = GetActiveIndex() if idx and RAY_Config.spells[idx] then RAY_Config.spells[idx].alertTime = val CheckAllAuras() end end)
-local sliderStacks = CreateFrame("Slider", "RAY_VStk_"..panelName, sChild, "OptionsSliderTemplate")
+local sliderStacks = CreateFrame("Slider", "RAY_VStk"..panelName, sChild, "OptionsSliderTemplate")
 sliderStacks:SetSize(110, 16) sliderStacks:SetPoint("TOPLEFT", sChild, "TOPLEFT", 160, currentY)
 local ssText2 = sliderStacks:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall") ssText2:SetPoint("BOTTOMLEFT", sliderStacks, "TOPLEFT", 0, 4)
 sliderStacks:SetScript("OnValueChanged", function(self, value) local val = math.floor(value) ssText2:SetText("Порог стаков: " .. val) local idx = _G[globalSelectedIndexRef] if idx and RAY_Config.spells[idx] then RAY_Config.spells[idx].minStacks = val CheckAllAuras() end end)
@@ -596,9 +699,9 @@ info.text = "Цель: Тек. цель" info.value = "target" info.checked = (a
 end)
 local function SetFields(data)
 if data then
-editBox:SetText(data.name or "") UIDropDownMenu_SetSelectedValue(dropDown, data.target or "player") UIDropDownMenu_SetText(dropDown, data.target == "target" and "Цель: Тек. цель" or "Цель: Игрок") sliderTime:SetValue(data.alertTime or 0) sliderStacks:SetValue(data.minStacks or 0) cbCombat:SetChecked(data.onlyInCombat == true) cbWorld:SetChecked(data.zoneWorld == true) cbParty:SetChecked(data.zoneParty == true) cbRaid:SetChecked(data.zoneRaid == true) cbCooldown:SetChecked(data.isCooldown == true) cbProc:SetChecked(data.isProc == true) cbCombo:SetChecked(data.isCombo == true) cbWeapon:SetChecked(data.isWeaponText == true) cbProgress:SetChecked(data.isStackProgress == true) cbHideCap:SetChecked(data.isHideCap == true) cbOwnWindow:SetChecked(data.isOwnWindow == true) specSlider:SetValue(data.customSize or 24) local c = data.color or GetDefaultColor() colorBtn.tex:SetVertexColor(c.r, c.g, c.b)
+editBox:SetText(data.name or "") UIDropDownMenu_SetSelectedValue(dropDown, data.target or "player") UIDropDownMenu_SetText(dropDown, data.target == "target" and "Цель: Тек. цель" or "Цель: Игрок") sliderTime:SetValue(data.alertTime or 0) sliderStacks:SetValue(data.minStacks or 0) cbCombat:SetChecked(data.onlyInCombat == true) cbWorld:SetChecked(data.zoneWorld == true) cbParty:SetChecked(data.zoneParty == true) cbRaid:SetChecked(data.zoneRaid == true) cbCooldown:SetChecked(data.isCooldown == true) cbProc:SetChecked(data.isProc == true) cbCombo:SetChecked(data.isCombo == true) cbWeapon:SetChecked(data.isWeaponText == true) cbProgress:SetChecked(data.isStackProgress == true) cbHideCap:SetChecked(data.isHideCap == true) cbExternal:SetChecked(data.isExternalOnly == true) cbOwnWindow:SetChecked(data.isOwnWindow == true) specSlider:SetValue(data.customSize or 24) local c = data.color or GetDefaultColor() colorBtn.tex:SetVertexColor(c.r, c.g, c.b)
 else
-editBox:SetText("") sliderTime:SetValue(0) sliderStacks:SetValue(0) specSlider:SetValue(24) cbCombat:SetChecked(false) cbWorld:SetChecked(false) cbParty:SetChecked(false) cbRaid:SetChecked(false) cbCooldown:SetChecked(false) cbProc:SetChecked(false) cbCombo:SetChecked(false) cbWeapon:SetChecked(false) cbProgress:SetChecked(false) cbHideCap:SetChecked(false) cbOwnWindow:SetChecked(false) local c = GetDefaultColor() colorBtn.tex:SetVertexColor(c.r, c.g, c.b) UIDropDownMenu_SetSelectedValue(dropDown, modeType == "DEBUFF" and "target" or "player") UIDropDownMenu_SetText(dropDown, modeType == "DEBUFF" and "Цель: Тек. цель" or "Цель: Игрок")
+editBox:SetText("") sliderTime:SetValue(0) sliderStacks:SetValue(0) specSlider:SetValue(24) cbCombat:SetChecked(false) cbWorld:SetChecked(false) cbParty:SetChecked(false) cbRaid:SetChecked(false) cbCooldown:SetChecked(false) cbProc:SetChecked(false) cbCombo:SetChecked(false) cbWeapon:SetChecked(false) cbProgress:SetChecked(false) cbHideCap:SetChecked(false) cbExternal:SetChecked(false) cbOwnWindow:SetChecked(false) local c = GetDefaultColor() colorBtn.tex:SetVertexColor(c.r, c.g, c.b) UIDropDownMenu_SetSelectedValue(dropDown, modeType == "DEBUFF" and "target" or "player") UIDropDownMenu_SetText(dropDown, modeType == "DEBUFF" and "Цель: Тек. цель" or "Цель: Игрок")
 end
 end
 local function ListButton_OnClick(self)
@@ -630,7 +733,7 @@ end
 btnOk:SetScript("OnClick", function()
 local txt = editBox:GetText() if not txt or txt == "" or txt == " " then return end
 local idx = GetActiveIndex() local finalColor = (idx and RAY_Config.spells[idx] and RAY_Config.spells[idx].color) or tempConfig.color or GetDefaultColor()
-local item = { name = txt, mode = modeType, target = UIDropDownMenu_GetSelectedValue(dropDown) or tempConfig.target, minStacks = math.floor(sliderStacks:GetValue()), alertTime = math.floor(sliderTime:GetValue()), onlyInCombat = cbCombat:GetChecked() and true or false, zoneWorld = cbWorld:GetChecked() and true or false, zoneParty = cbParty:GetChecked() and true or false, zoneRaid = cbRaid:GetChecked() and true or false, isCooldown = cbCooldown:GetChecked() and true or false, isProc = cbProc:GetChecked() and true or false, isCombo = cbCombo:GetChecked() and true or false, isWeaponText = cbWeapon:GetChecked() and true or false, isStackProgress = cbProgress:GetChecked() and true or false, isHideCap = cbHideCap:GetChecked() and true or false, isOwnWindow = cbOwnWindow:GetChecked() and true or false, customSize = math.floor(specSlider:GetValue()), color = finalColor }
+local item = { name = txt, mode = modeType, target = UIDropDownMenu_GetSelectedValue(dropDown) or tempConfig.target, minStacks = math.floor(sliderStacks:GetValue()), alertTime = math.floor(sliderTime:GetValue()), onlyInCombat = cbCombat:GetChecked() and true or false, zoneWorld = cbWorld:GetChecked() and true or false, zoneParty = cbParty:GetChecked() and true or false, zoneRaid = cbRaid:GetChecked() and true or false, isCooldown = cbCooldown:GetChecked() and true or false, isProc = cbProc:GetChecked() and true or false, isCombo = cbCombo:GetChecked() and true or false, isWeaponText = cbWeapon:GetChecked() and true or false, isStackProgress = cbProgress:GetChecked() and true or false, isHideCap = cbHideCap:GetChecked() and true or false, isExternalOnly = cbExternal:GetChecked() and true or false, isOwnWindow = cbOwnWindow:GetChecked() and true or false, customSize = math.floor(specSlider:GetValue()), color = finalColor }
 if idx and RAY_Config.spells[idx] then RAY_Config.spells[idx] = item else table.insert(RAY_Config.spells, item) end
 SetActiveIndex(nil) SetFields(nil) LocalUpdateLists() CheckAllAuras()
 end)
@@ -655,7 +758,9 @@ local function SubButton_OnClick(self)
 local data = RAY_Config.specSettings[self.specNum][self.storageKey][self.itemIndex]
 if type(data) == "table" then
 self.activeIndices[self.storageKey] = self.itemIndex
-for _, b in ipairs(listButtonsSub[self.specNum][self.storageKey]) do b:UnlockHighlight() end
+for _, b in ipairs(listButtonsSub[self.specNum][self.storageKey]) do
+b:UnlockHighlight()
+end
 self:LockHighlight()
 if self.isIcd then self.boxName:SetText(data.name or "") self.boxSec:SetText(data.seconds or "45") else self.editBox:SetText(data.name or "") end
 self.cbCombat:SetChecked(data.onlyInCombat == true) self.cbWorld:SetChecked(data.zoneWorld == true) self.cbParty:SetChecked(data.zoneParty == true) self.cbRaid:SetChecked(data.zoneRaid == true)
@@ -669,11 +774,13 @@ RefreshLocalSubList(parent.specNum, parent.storageKey) CheckAllAuras()
 end
 RefreshLocalSubList = function(specNum, storageKey)
 local pBlock = listButtonsSub[specNum][storageKey]
-for _, b in ipairs(pBlock) do b:Hide() end
+for _, b in ipairs(pBlock) do
+b:Hide()
+end
 if not RAY_Config or not RAY_Config.specSettings or not RAY_Config.specSettings[specNum] or not RAY_Config.specSettings[specNum][storageKey] then return end
 for idx, data in ipairs(RAY_Config.specSettings[specNum][storageKey]) do
 local isIcd = (storageKey == "icds")
-local textStr = type(data) == "table" and ((data.name or "Ошибка") .. (isIcd and (" ("..(data.seconds or "45").."с)") or "")) or tostring(data)
+local textStr = type(data) == "table" and ((data.name or "Ошибка") .. (isIcd and (" ("..(data.seconds or "45").."s)") or "")) or tostring(data)
 local btn = pBlock[idx]
 if not btn then
 btn = CreateFrame("Button", nil, pBlock.listFrame) btn:SetSize(280, 22) btn:SetNormalFontObject("GameFontNormal") btn:SetHighlightTexture("Interface\Buttons\UI-Listbox-Highlight")
@@ -693,16 +800,16 @@ local blockHeader = scrollChild:CreateFontString(nil, "OVERLAY", "GameFontNormal
 blockHeader:SetPoint("TOPLEFT", scrollChild, "TOPLEFT", hOffsetSub, startY) blockHeader:SetText(headerColorCode..specTitle.."|r")
 local function BuildInputFieldBlock(labelTxt, storageKey, tText, isIcd, blockOffsetIndex)
 local blockTopY = startY - 30 - (blockOffsetIndex * 240)
-local container = CreateFrame("Frame", "RAY_Spec"..specNum.."Block_"..storageKey, scrollChild)
+local container = CreateFrame("Frame", "RAY_Spec" .. specNum .. "Block" .. storageKey, scrollChild)
 container:SetSize(360, 230)
 container:SetPoint("TOPLEFT", scrollChild, "TOPLEFT", hOffsetSub, blockTopY)
 local editBox, boxName, boxSec
 if isIcd then
-boxName = CreateBlizzardEditBox(container, 0, -25, 160, "RAY_SIcdN_"..specNum..""..storageKey) SetTooltip(boxName, tText)
+boxName = CreateBlizzardEditBox(container, 0, -25, 160, "RAY_SIcdN"..specNum..""..storageKey) SetTooltip(boxName, tText)
 boxSec = CreateBlizzardEditBox(container, 175, -25, 45, "RAY_SIcdS"..specNum..""..storageKey) boxSec:SetMaxLetters(7)
 editBox = boxName
 else
-editBox = CreateBlizzardEditBox(container, 0, -25, 220, "RAY_SInp"..specNum.."_"..storageKey) SetTooltip(editBox, tText)
+editBox = CreateBlizzardEditBox(container, 0, -25, 220, "RAY_SInp"..specNum..""..storageKey) SetTooltip(editBox, tText)
 end
 local label = container:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
 label:SetPoint("BOTTOMLEFT", editBox, "TOPLEFT", 2, 6) label:SetText(headerColorCode .. labelTxt .. "|r")
@@ -725,9 +832,9 @@ end)
 return cb
 end
 local cbCombat = CreateSubCheckbox("Включать только в бою", 55, "onlyInCombat")
-local cbWorld  = CreateSubCheckbox("В открытом мире", 80, "zoneWorld")
-local cbParty  = CreateSubCheckbox("В подземельях", 105, "zoneParty")
-local cbRaid   = CreateSubCheckbox("В рейдовых зонах", 130, "zoneRaid")
+local cbWorld = CreateSubCheckbox("В открытом мире", 80, "zoneWorld")
+local cbParty = CreateSubCheckbox("В подземельях", 105, "zoneParty")
+local cbRaid = CreateSubCheckbox("В рейдовых зонах", 130, "zoneRaid")
 local listFrame = CreateFrame("Frame", nil, container)
 listFrame:SetSize(280, 85)
 listFrame:SetPoint("TOPLEFT", editBox, "TOPLEFT", 2, -165)
