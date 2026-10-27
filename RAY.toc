@@ -2,7 +2,7 @@
 ## Title: RAY - Remember About Yourself
 ## Notes: Напоминает о важных баффах на себе.
 ## Author: Highest-V
-## Version: 4.0
+## Version: 4.1
 ## X-Date: 2026-10-11
 ## SavedVariablesPerCharacter: RAY_Config
 
