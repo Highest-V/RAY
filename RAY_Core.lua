@@ -62,7 +62,7 @@ end
 function CleanSpellName(name)
     if not name then return "" end
     local lowerName = string.lower(tostring(name))
-    return lowerName:gsub("%s+[ivxlcdm]+%s*$", ""):gsub("%s*$", ""):match("^%s*(.-)%s*$") or ""
+    return lowerName:gsub("%s+[ivxlcdm]+%s*$", ""):gsub("%s*%d+$", ""):gsub("%s*$", ""):match("^%s*(.-)%s*$") or ""
 end
 
 function RebuildSpellsLookup()
@@ -162,8 +162,10 @@ local function UpdateCustomGearEnchantCache()
     end
 end
 
+-- ИЗОЛИРОВАННЫЙ КУБИК 1: ПРОВЕРКА ЧАР НА КОНКРЕТНОМ ОРУЖИИ (ПРАВОЕ / ЛЕВОЕ)
 local function GetEnchantCooldownOrStatus(enchantName)
     local nameLower = enchantName:lower()
+    
     if nameLower:find("гипер") or nameLower:find("ускор") or nameLower:find("перчат") then
         local start, duration = GetInventoryItemCooldown("player", 10)
         if start and start > 0 and duration > 1.5 then
@@ -171,9 +173,22 @@ local function GetEnchantCooldownOrStatus(enchantName)
         end
         return false, 0, 0, nil
     end
+
     local hasMain, mainExp, _, _, hasOff, offExp = GetWeaponEnchantInfo()
-    if hasMain and mainExp and (CleanSpellName(enchantName):find("неистовство") or nameLower:find("windfury")) then return true, 1, math.max(0, math.ceil(mainExp / 1000)), nil end
-    if hasOff and offExp and (CleanSpellName(enchantName):find("язык пламени") or nameLower:find("flametongue")) then return true, 1, math.max(0, math.ceil(offExp / 1000)), nil end
+    local cleanReq = CleanSpellName(enchantName)
+    
+    local isWindfuryRule = (cleanReq:find("неистовство") or cleanReq:find("ветер") or nameLower:find("windfury"))
+    local isFlametongueRule = (cleanReq:find("язык") or cleanReq:find("пламен") or nameLower:find("flametongue"))
+    
+    -- Проверка строго по названию чарки, чтобы они не гасили друг друга ложно
+    if isWindfuryRule then
+        if hasMain and mainExp then return true, 1, math.max(0, math.ceil(mainExp / 1000)), nil end
+    end
+    
+    if isFlametongueRule then
+        if hasOff and offExp then return true, 1, math.max(0, math.ceil(offExp / 1000)), nil end
+    end
+    
     return false, 0, 0, nil
 end
 
@@ -218,23 +233,23 @@ local function UpdateEquipmentSetsCache()
 end
 
 local function FindAuraDirect(target, nameOrId)
-    local searchKey = tostring(nameOrId):lower()
+    local searchKey = CleanSpellName(nameOrId)
+    if searchKey == "" then return false, 0, 0, nil end
     local curTime = GetTime()
     
     for i = 1, 40 do
         local name, _, _, count, _, _, expirationTime, caster, _, _, spellID = UnitAura(target, i, "HELPFUL")
         if not name then break end
-        if name:lower() == searchKey or tostring(spellID) == searchKey then
+        if CleanSpellName(name) == searchKey or tostring(spellID) == searchKey then
             local rem = (expirationTime and expirationTime > 0) and (expirationTime - curTime) or 0
             if expirationTime == 0 then rem = 0 end 
             return true, (count and count > 0) and count or 1, rem, caster
         end
     end
-    
     for i = 1, 40 do
         local name, _, _, count, _, _, expirationTime, caster, _, _, spellID = UnitAura(target, i, "HARMFUL")
         if not name then break end
-        if name:lower() == searchKey or tostring(spellID) == searchKey then
+        if CleanSpellName(name) == searchKey or tostring(spellID) == searchKey then
             local rem = (expirationTime and expirationTime > 0) and (expirationTime - curTime) or 0
             if expirationTime == 0 then rem = 0 end 
             return true, (count and count > 0) and count or 1, rem, caster
@@ -245,14 +260,14 @@ local function FindAuraDirect(target, nameOrId)
 end
 
 local function CheckAuraGroupDirect(target, spellLine)
-    local active, currentStacks, minRemaining, lastCaster = false, 0, 999999, nil
-    for condition in string.gmatch(spellLine, "[^|/]+") do
-        condition = condition:match("^%s*(.-)%s*$")
-        local found, stacks, timeLeft, caster = FindAuraDirect(target, condition)
-        if found then
-            active = true
-            currentStacks = math.max(currentStacks, stacks)
-            if timeLeft < minRemaining then minRemaining = timeLeft end
+local active, currentStacks, minRemaining, lastCaster = false, 0, 999999, nil
+for condition in string.gmatch(spellLine, "[^|/]+") do
+condition = condition:match("^%s*(.-)%s*$")
+local found, stacks, timeLeft, caster = FindAuraDirect(target, condition)
+if found then
+active = true
+currentStacks = math.max(currentStacks, stacks)
+if timeLeft < minRemaining then minRemaining = timeLeft end
 if caster then lastCaster = caster end
 end
 end
@@ -410,33 +425,34 @@ if not spellData.isSummonObject then
 local limitStacks, userAlertTime, prefix = (tonumber(spellData.minStacks) or 0), (tonumber(spellData.alertTime) or 0), " ст"
 local hexColor = GetCachedHexColor(spellData.color)
 local finalRGBColor = spellData.color or GetDefaultColor()
-if spellData.isCooldown then
-local isCurrentlyOnCooldown, cdLeft = false, 0
+local needAlert, customReason = false, ""
+-- КУБИК 1: ЧАРЫ ОРУЖИЯ И ИНЖЕНЕРИИ (ГАСНУТ СРАЗУ, ЕСЛИ ЧАРКА ЕСТЬ)
 if spellData.isWeaponText then
-isCurrentlyOnCooldown, _, cdLeft = GetEnchantCooldownOrStatus(spellData.name)
+local isWeaponActive = GetEnchantCooldownOrStatus(spellData.name)
+if not isWeaponActive then
+needAlert = true
+customReason = ""
 else
+needAlert = false
+end
+-- КУБИК 2: ЭТО КД (СВЕТИТСЯ ТОЛЬКО КОГДА СПОСОБНОСТЬ ПОЛНОСТЬЮ ГОТОВА)
+elseif spellData.isCooldown then
+local isCurrentlyOnCooldown = false
 local start, duration = GetSpellCooldown(spellData.name)
 if start and start > 0 and duration > 1.5 then
 isCurrentlyOnCooldown = true
-cdLeft = math.ceil(duration - (GetTime() - start))
-end
 end
 local isActiveOnPlayer = CheckAuraGroupDirect("player", spellData.name)
 if not isCurrentlyOnCooldown and not isActiveOnPlayer then
-local displayName = string.match(spellData.name, "[^|/]+") or spellData.name
-local msg = "RAY: Готово! Прожми [" .. displayName .. "]"
-if spellData.isOwnWindow then
-local winKey = spellData.name:gsub("%s", ""):gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")
-customAlertsByWindow[winKey] = { text = "|cff" .. hexColor .. msg .. "|r", color = finalRGBColor, size = spellData.customSize }
+needAlert = true
+customReason = ""
 else
-uniqueAlerts["|cff" .. hexColor .. msg .. "|r"] = true
-if spellData.customSize and spellData.customSize > mainFrameFontSize then mainFrameFontSize = spellData.customSize end
+needAlert = false -- Кнопка на КД или эффект висит — аддон ПОЛНОСТЬЮ И ЖЕЛЕЗНО МОЛЧИТ!
 end
-end
+-- КУБИК 3: ОБЫЧНЫЕ БАФФЫ И ДЕБАФФЫ (Раскол, Доспехи, Щиты)
 else
 local target = spellData.target or "player"
 local isActive, stacks, timeLeft, caster = CheckAuraGroupDirect(target, spellData.name)
-local needAlert, customReason = false, ""
 if isActive and limitStacks > 0 and (stacks >= limitStacks) then
 hexColor = "FF0000"
 finalRGBColor = { r = 1, g = 0, b = 0 }
@@ -459,23 +475,32 @@ else
 needAlert = false
 end
 else
--- АБСОЛЮТНОЕ ИСПРАВЛЕНИЕ ЛОГИКИ ОБЫЧНЫХ ОБНОВЛЯЕМЫХ БАФФОВ (Доспехи мага, Печати)
 if not isActive then
 needAlert = true
 if limitStacks > 0 then customReason = " (0/" .. limitStacks .. prefix .. ")" end
 else
--- Если бафф висит на персонаже (isActive == true)
-if userAlertTime > 0 then
--- Если выставлен порог (например, 60), аддон загорится строго за 60 сек до конца
+if spellData.isStackProgress and limitStacks > 0 and (stacks < limitStacks) then
+needAlert = true
+customReason = " (" .. stacks .. "/" .. limitStacks .. prefix .. ")"
+timeLeft = 9999
+elseif userAlertTime > 0 then
 if timeLeft <= userAlertTime then
 needAlert = true
-customReason = " (" .. math.ceil(timeLeft) .. " сек)"
+local displayStacks = (limitStacks > 0) and (" (" .. stacks .. "/" .. limitStacks .. prefix .. ") ") or ""
+customReason = displayStacks .. math.ceil(timeLeft) .. " сек"
 else
-needAlert = false -- До конца далеко - аддон полностью МОЛЧИТ!
+needAlert = false
 end
 else
--- ЕЛИ ПОРОГ РАВЕН 0 — ЭТО ПРОСТОЙ ФЛАГ НАЛИЧИЯ. Раз бафф есть, аддон ПОЛНОСТЬЮ МОЛЧИТ!
+if spellData.isHideCap and limitStacks > 0 and (stacks >= limitStacks) then
 needAlert = false
+else
+needAlert = true
+local displayStacks = (limitStacks > 0) and (" (" .. stacks .. "/" .. limitStacks .. prefix .. ")") or ""
+local displayTime = (timeLeft > 0 and timeLeft < 3600) and (" " .. math.ceil(timeLeft) .. " сек") or ""
+customReason = displayStacks .. displayTime
+end
+end
 end
 end
 end
@@ -483,17 +508,25 @@ end
 if needAlert then
 local displayName = string.match(spellData.name, "[^|/]+") or spellData.name
 local msgType = (spellData.mode == "DEBUFF") and "RAY: Дебафф [" or "RAY: Обнови бафф ["
-if target == "target" and spellData.mode == "DEBUFF" then msgType = "RAY: Наложи дебафф [" end
+if spellData.target == "target" and spellData.mode == "DEBUFF" then msgType = "RAY: Наложи дебафф [" end
 if spellData.isProc then msgType = "RAY: Прок! [" end
+if spellData.isWeaponText then msgType = "RAY: Чарка [" end
+if spellData.isCooldown then msgType = "RAY: Готово! Прожми [" end
 if spellData.isExternalOnly then msgType = msgTypeCustom or "RAY: " end
-local msg = (spellData.isExternalOnly) and (msgType .. "[" .. displayName .. "]") or (msgType .. displayName .. "]" .. customReason)
+local msg = ""
+if spellData.isCooldown then
+msg = msgType .. displayName .. "]"
+elseif spellData.isExternalOnly then
+msg = msgType .. "[" .. displayName .. "]"
+else
+msg = msgType .. displayName .. "]" .. customReason
+end
 if spellData.isOwnWindow then
 local winKey = spellData.name:gsub("%s", ""):gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")
 customAlertsByWindow[winKey] = { text = "|cff" .. hexColor .. msg .. "|r", color = finalRGBColor, size = spellData.customSize }
 else
 uniqueAlerts["|cff" .. hexColor .. msg .. "|r"] = true
 if spellData.customSize and spellData.customSize > mainFrameFontSize then mainFrameFontSize = spellData.customSize end
-end
 end
 end
 end
@@ -617,7 +650,7 @@ local spellData = spellsLookup[summonNameLower]
 if (summonNameLower:find("зеркал") or summonNameLower:find("изображ") or summonNameLower:find("копии") or summonNameLower:find("горгул")) and not summonNameLower:find("тотем") then
 local duration = spellData and tonumber(spellData.alertTime) or 30
 if duration == 0 then duration = 30 end
-activeSummonAlerts["player_summon_" .. summonNameLower] = {
+activeSummonAlerts["player_summon" .. summonNameLower] = {
 endTime = GetTime() + duration,
 spellName = spellName,
 color = spellData and spellData.color or GetDefaultColor(),

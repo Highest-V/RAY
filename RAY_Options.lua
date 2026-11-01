@@ -2,6 +2,15 @@ local shortcutFrame = CreateFrame("Frame")
 local isSelfUpdating = false
 local dragCbGlobal
 
+-- Жесткая и явная инициализация структуры кнопок без пропусков индексов
+listButtonsSub = {}
+listButtonsSub[1] = { sets = {}, buffs = {}, icds = {} }
+listButtonsSub[2] = { sets = {}, buffs = {}, icds = {} }
+
+local function GetDefaultColor()
+    return { r = 0.5, g = 0.95, b = 0.8 }
+end
+
 function ToggleRayMove(enable)
     if RAY_Config and enable and not RAY_Config.enabled then
         RAY_Config.enabled = true
@@ -134,11 +143,11 @@ shortcutFrame:SetScript("OnEvent", function()
         UIDropDownMenu_Initialize(dropDown, function()
             local info = UIDropDownMenu_CreateInfo() 
             info.text = "Игрок" 
-            info.value = "player" 
-            info.func = function(self) UIDropDownMenu_SetSelectedValue(dropDown, self.value) UIDropDownMenu_SetText(dropDown, "Цель: Игрок") end 
-            UIDropDownMenu_AddButton(info)
-            info = UIDropDownMenu_CreateInfo()
-            info.text = "Текущая цель" 
+info.value = "player"
+info.func = function(self) UIDropDownMenu_SetSelectedValue(dropDown, self.value) UIDropDownMenu_SetText(dropDown, "Цель: Игрок") end
+UIDropDownMenu_AddButton(info)
+info = UIDropDownMenu_CreateInfo()
+info.text = "Текущая цель"
 info.value = "target"
 info.func = function(self) UIDropDownMenu_SetSelectedValue(dropDown, self.value) UIDropDownMenu_SetText(dropDown, "Цель: Тек. цель") end
 UIDropDownMenu_AddButton(info)
@@ -162,7 +171,7 @@ cbProc     = AddVerticalCheckbox("Это прок (активен до трат�
 cbWeapon   = AddVerticalCheckbox("Чары инженерии / оружия", "Сканировать внутренние проки оружия, чар и инженерных гаджетов.", "isWeaponText")
 cbProgress = AddVerticalCheckbox("Показывать набор стаков", "Выводить на экран текущий набор стаков, например (2/5).", "isStackProgress")
 cbHideCap  = AddVerticalCheckbox("Скрыть при полном капе стаков", "Прятать текст оповещения, когда набран максимальный кап стаков.", "isHideCap")
-cbExternal = AddVerticalCheckbox("Внешняя аура (Только чужие)", "Аддон молчит, но как только КТО-ТО ДРУГОЙ наложит на вас этот эффект — выведет сообщение.", "isExternalOnly")
+cbExternal = AddVerticalCheckbox("Внешняя аура (Обнаружение чужих)", "Аддон перехватывает касты других игроков на арене/рейде и пишет: Обнаружен спелл [Ник] -> [Имя].", "isExternalOnly")
 cbSummon   = AddVerticalCheckbox("Это призыв (Тотем/Горгулья)", "Включает перехват физических объектов в мире. Текст будет гореть на экране, пока объект существует.", "isSummonObject")
 currentY = currentY - 15
 specSlider = CreateFrame("Slider", "RAY_VSlider" .. panelName, sChild, "OptionsSliderTemplate") specSlider:SetSize(180, 16) specSlider:SetPoint("TOPLEFT", 12, currentY) specSlider:SetMinMaxValues(12, 48) specSlider:SetValueStep(1)
@@ -207,7 +216,7 @@ local spellData = RAY_Config.spells[i]
 if spellData and spellData.mode == modeType then
 local buttonsList = _G[listButtonsRef] local btn = buttonsList[count]
 if not btn then
-btn = CreateFrame("Button", nil, listFrame) btn:SetSize(280, 22) btn:SetNormalFontObject("GameFontNormal") btn:SetHighlightTexture("Interface\\Buttons\\UI-Listbox-Highlight")
+btn = CreateFrame("Button", nil, listFrame) btn:SetSize(280, 22) btn:SetNormalFontObject("GameFontNormal") btn:SetHighlightTexture("Interface\\Buttons\UI-Listbox-Highlight")
 local del = CreateFrame("Button", nil, btn, "UIPanelCloseButton") del:SetSize(20, 20) del:SetPoint("RIGHT", btn, "RIGHT", -2, 0) btn.delBtn = del
 btn:SetScript("OnClick", function(self)
 if isSelfUpdating then return end
@@ -278,6 +287,7 @@ scrollChild:SetSize(380, 1700) mainScroll:SetScrollChild(scrollChild)
 local subTitle = setsPanel:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
 subTitle:SetPoint("TOPLEFT", 16, -14) subTitle:SetText(PASTEL_TITLE .. "Автоматика Спеков, Стоек и Комплектов Экипировки|r")
 local function SubButton_OnClick(self)
+if not RAY_Config.specSettings or not RAY_Config.specSettings[self.specNum] then return end
 local data = RAY_Config.specSettings[self.specNum][self.storageKey][self.itemIndex]
 if type(data) == "table" then
 self.activeIndices[self.storageKey] = self.itemIndex
@@ -306,13 +316,15 @@ end
 RefreshLocalSubList = function(specNum, storageKey)
 local pBlock = listButtonsSub[specNum][storageKey]
 for _, b in ipairs(pBlock) do b:Hide() end
-if not RAY_Config or not RAY_Config.specSettings or not RAY_Config.specSettings[specNum] or not RAY_Config.specSettings[specNum][storageKey] then return end
+if not RAY_Config or not RAY_Config.specSettings then return end
+if not RAY_Config.specSettings[specNum] then RAY_Config.specSettings[specNum] = { sets = {}, buffs = {}, icds = {} } end
+if not RAY_Config.specSettings[specNum][storageKey] then RAY_Config.specSettings[specNum][storageKey] = {} end
 for idx, data in ipairs(RAY_Config.specSettings[specNum][storageKey]) do
 local isIcd = (storageKey == "icds")
-local textStr = type(data) == "table" and ((data.name or "Ошибка") .. (isIcd and (" ("..(data.seconds or "45/5").."s)") or "")) or tostring(data)
+local textStr = type(data) == "table" and ((data.name or "Ошибка") .. (isIcd and (" ("..(data.seconds or "45/5")..")") or "")) or tostring(data)
 local btn = pBlock[idx]
 if not btn then
-btn = CreateFrame("Button", nil, pBlock.listFrame) btn:SetSize(280, 22) btn:SetNormalFontObject("GameFontNormal") btn:SetHighlightTexture("Interface\\Buttons\UI-Listbox-Highlight")
+btn = CreateFrame("Button", nil, pBlock.listFrame) btn:SetSize(280, 22) btn:SetNormalFontObject("GameFontNormal") btn:SetHighlightTexture("Interface\Buttons\UI-Listbox-Highlight")
 local del = CreateFrame("Button", nil, btn, "UIPanelCloseButton") del:SetSize(20, 20) del:SetPoint("RIGHT", btn, "RIGHT", -2, 0)
 btn.del = del pBlock[idx] = btn
 end
@@ -334,7 +346,7 @@ container:SetSize(360, 230) container:SetPoint("TOPLEFT", scrollChild, "TOPLEFT"
 local editBox, boxName, boxSec
 if isIcd then
 boxName = CreateBlizzardEditBox(container, 0, -25, 160, "RAY_SIcdN"..specNum..""..storageKey) SetTooltip(boxName, tText)
-boxSec = CreateBlizzardEditBox(container, 175, -25, 65, "RAY_SIcdS"..specNum..""..storageKey) boxSec:SetMaxLetters(10)
+boxSec = CreateBlizzardEditBox(container, 175, -25, 60, "RAY_SIcdS"..specNum..""..storageKey) boxSec:SetMaxLetters(12)
 editBox = boxName
 else
 editBox = CreateBlizzardEditBox(container, 0, -25, 220, "RAY_SInp"..specNum..""..storageKey) SetTooltip(editBox, tText)
@@ -343,24 +355,19 @@ local label = container:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
 label:SetPoint("BOTTOMLEFT", editBox, "TOPLEFT", 2, 6) label:SetText(headerColorCode .. labelTxt .. "|r")
 local btnOk = CreateFrame("Button", nil, container, "UIPanelButtonTemplate")
 btnOk:SetSize(45, 24) btnOk:SetPoint("LEFT", isIcd and boxSec or editBox, "RIGHT", 8, 0) btnOk:SetText(PASTEL_YELLOW.."ОК|r")
--- Добавление текстовой подсказки формата секунд трини
-if isIcd then
-local helperText = container:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-helperText:SetPoint("TOPLEFT", boxSec, "BOTTOMLEFT", 0, -4)
-helperText:SetText("Формат: ВнутрКД / ОкноЗамера (напр. 45/5)")
-end
 local function CreateSubCheckbox(lbl, innerY, key)
 local cb = CreateFrame("CheckButton", nil, container, "InterfaceOptionsCheckButtonTemplate")
 cb:SetPoint("TOPLEFT", container, "TOPLEFT", 0, -innerY) cb:SetScale(0.85)
 local t = cb:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
 t:SetPoint("LEFT", cb, "RIGHT", 5, 1) t:SetText(headerColorCode .. lbl .. "|r")
 cb:SetScript("OnClick", function(self)
-if RAY_Config and RAY_Config.specSettings and RAY_Config.specSettings[specNum] and RAY_Config.specSettings[specNum][storageKey] then
+if not RAY_Config.specSettings then RAY_Config.specSettings = {} end
+if not RAY_Config.specSettings[specNum] then RAY_Config.specSettings[specNum] = { sets = {}, buffs = {}, icds = {} } end
+if not RAY_Config.specSettings[specNum][storageKey] then RAY_Config.specSettings[specNum][storageKey] = {} end
 local idx = activeIndices[storageKey]
 if idx and RAY_Config.specSettings[specNum][storageKey][idx] then
 RAY_Config.specSettings[specNum][storageKey][idx][key] = self:GetChecked() and true or false
 CheckAllAuras()
-end
 end
 end)
 return cb
@@ -371,6 +378,9 @@ local cbParty = CreateSubCheckbox("В подземельях", 105, "zoneParty")
 local cbRaid = CreateSubCheckbox("В рейдовых зонах", 130, "zoneRaid")
 local listFrame = CreateFrame("Frame", nil, container)
 listFrame:SetSize(280, 85) listFrame:SetPoint("TOPLEFT", editBox, "TOPLEFT", 2, -165)
+-- ЗАЩИТА ССЫЛОК: Проверяем существование вложенных подтаблиц перед добавлением ссылок
+if not listButtonsSub[specNum] then listButtonsSub[specNum] = {} end
+if not listButtonsSub[specNum][storageKey] then listButtonsSub[specNum][storageKey] = {} end
 listButtonsSub[specNum][storageKey].listFrame = listFrame
 listButtonsSub[specNum][storageKey].activeIndices = activeIndices
 listButtonsSub[specNum][storageKey].boxName = boxName
@@ -382,6 +392,8 @@ listButtonsSub[specNum][storageKey].cbParty = cbParty
 listButtonsSub[specNum][storageKey].cbRaid = cbRaid
 btnOk:SetScript("OnClick", function()
 local txt = editBox:GetText() if not txt or txt == "" or txt == " " then return end
+if not RAY_Config.specSettings then RAY_Config.specSettings = {} end
+if not RAY_Config.specSettings[specNum] then RAY_Config.specSettings[specNum] = { sets = {}, buffs = {}, icds = {} } end
 if not RAY_Config.specSettings[specNum][storageKey] then RAY_Config.specSettings[specNum][storageKey] = {} end
 local activeIdx = activeIndices[storageKey]
 local itemData = { name = txt, seconds = isIcd and (boxSec:GetText() or "45/5") or nil, onlyInCombat = cbCombat:GetChecked() and true or false, zoneWorld = cbWorld:GetChecked() and true or false, zoneParty = cbParty:GetChecked() and true or false, zoneRaid = cbRaid:GetChecked() and true or false }
@@ -399,7 +411,7 @@ end)
 end
 BuildInputFieldBlock("Комплект экипировки:", "sets", "Название вашего комплекта экипировки in-game.", false, 0)
 BuildInputFieldBlock("Стойка / Бафф:", "buffs", "Обязательная aura или боевая стойка класса.", false, 1)
-BuildInputFieldBlock("Прок триньки / КД:", "icds", "Формат: КД/ОкноПоказа (например, 45/5)", true, 2)
+BuildInputFieldBlock("Прок триньки / КД:", "icds", "Формат: ОбщееКД/ЗаСколькоПоказатьНапоминание.\nПример: 45/5 (Внутреннее КД триньки 45 сек, а предупреждение на экране загорится строго за 5 секунд до её полной готовности к проку).", true, 2)
 end
 CreateSubPageBlock(1, -15, COLOR_SPEC1, "ПЕРВАЯ ВЕТКА (СПЕК 1)")
 CreateSubPageBlock(2, -775, COLOR_SPEC2, "ВТОРАЯ ВЕТКА (СПЕК 2)")
