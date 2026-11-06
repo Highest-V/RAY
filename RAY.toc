@@ -7,6 +7,8 @@
 
 # --- ЯДРО АДДОНА (БАЗА И МОДУЛИ ЛОГИКИ) ---
 Core\RAY_Core_Base.lua
+Core\RAY_Core_Events.lua
+Core\RAY_Core_CombatLog.lua
 Core\RAY_Core_Sets.lua
 Core\RAY_Core_Buffs.lua
 Core\RAY_Core_Debuffs.lua
