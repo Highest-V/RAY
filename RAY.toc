@@ -1,9 +1,18 @@
 ## Interface: 30300
-## Title: RAY - Remember About Yourself
+## Title: RAY - Remember About Yourself (Modular)
 ## Notes: Универсальный мультиконструктор, который напоминает о селф-баффах.
 ## Author: Highest-V
-## Version: 6.0
+## Version: 7.0
 ## SavedVariablesPerCharacter: RAY_Config
 
-RAY_Core.lua
-RAY_Options.lua
+# --- ЯДРО АДДОНА (БАЗА И МОДУЛИ ЛОГИКИ) ---
+Core\RAY_Core_Base.lua
+Core\RAY_Core_Sets.lua
+Core\RAY_Core_Buffs.lua
+Core\RAY_Core_Debuffs.lua
+
+# --- ИНТЕРФЕЙС НАСТРОЕК (МЕНЮ И ВКЛАДКИ) ---
+Options\RAY_Options_Main.lua
+Options\RAY_Options_Buffs.lua
+Options\RAY_Options_Debuffs.lua
+Options\RAY_Options_Sets.lua
