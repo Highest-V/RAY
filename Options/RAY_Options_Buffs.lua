@@ -101,7 +101,6 @@ function RAY_Engine.InitBuffsPage()
     editTime = CreateBlizzardEditBox(modal, 20, currentY, 110, "RAY_BuffsTimeBox")
     local etText = modal:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall") etText:SetPoint("BOTTOMLEFT", editTime, "TOPLEFT", 0, 4) etText:SetText("Порог времени (сек):")
     editTime:SetScript("OnTextChanged", function(self)
-        local val = tonumber(self:GetText()) or 0 local idx = GetActiveIndex()
         local val = tonumber(self:GetText()) or 0 
         local idx = GetActiveIndex()
         if idx then 
