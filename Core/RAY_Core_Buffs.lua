@@ -186,14 +186,16 @@ function RAY_Engine.ProcessBuffs(activeProfile, inCombat, currentZone, curTime, 
                     if buff.invert then
                         msg = "|cffFF7676RAY: Сними [" .. displayName .. "]" .. customReason .. "!|r"
                     else
-local alertPrefix = buff.isPetTracker and "RAY: Призови [" or "RAY: Включи ["
-msg = "|cffA8FF35" .. alertPrefix .. displayName .. "]" .. customReason .. "!|r"
-end
-RAY_Engine.uniqueAlerts[msg] = true
-if buff.customSize and buff.customSize > mainFrameFontSize then mainFrameFontSize = buff.customSize end
-end
-end
-end
-end
-return mainFrameFontSize
+                    local alertPrefix = buff.isPetTracker and "RAY: Призови [" or "RAY: Включи ["
+                    msg = "|cffA8FF35" .. alertPrefix .. displayName .. "]" .. customReason .. "!|r"
+                    
+                    RAY_Engine.uniqueAlerts[msg] = true
+                    if buff.customSize and buff.customSize > mainFrameFontSize then 
+                        mainFrameFontSize = buff.customSize 
+                    end
+                end
+            end
+        end
+    end
+    return mainFrameFontSize
 end

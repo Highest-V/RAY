@@ -138,49 +138,100 @@ function RAY_Engine.InitSetsPage()
             local editBox = CreateBlizzardEditBox(container, 0, -25, 220, "RAY_SInp"..specNum..""..storageKey) SetTooltip(editBox, tText)
             local label = container:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall") label:SetPoint("BOTTOMLEFT", editBox, "TOPLEFT", 2, 6) label:SetText(headerColorCode .. labelTxt .. "|r")
             local btnOk = CreateFrame("Button", nil, container, "UIPanelButtonTemplate") btnOk:SetSize(45, 24) btnOk:SetPoint("LEFT", editBox, "RIGHT", 8, 0) btnOk:SetText(PASTEL_YELLOW.."ОК|r")
-SetTooltip(btnOk, "Сохранить автоматизацию в этот спек.")
-local listFrame = CreateFrame("Frame", nil, container) listFrame:SetSize(280, 75) listFrame:SetPoint("TOPLEFT", editBox, "TOPLEFT", 2, -35)
-listButtonsSub[specNum][storageKey].listFrame = listFrame
-listButtonsSub[specNum][storageKey].headerColorCode = headerColorCode
-btnOk:SetScript("OnClick", function()
-local txt = editBox:GetText() if not txt or txt == "" or txt == " " then return end
-local cleanText = txt:gsub("^%s*(.-)%s*$", "%1")
-local spellID = tonumber(cleanText)
-if spellID then
-local spellName = GetSpellInfo(spellID)
-if spellName then txt = spellName end
+    SetTooltip(btnOk, "Сохранить автоматизацию в этот спек.")
+    
+    local listFrame = CreateFrame("Frame", nil, container) 
+    listFrame:SetSize(280, 75) 
+    listFrame:SetPoint("TOPLEFT", editBox, "TOPLEFT", 2, -35)
+    
+    listButtonsSub[specNum][storageKey].listFrame = listFrame
+    listButtonsSub[specNum][storageKey].headerColorCode = headerColorCode
+    
+    btnOk:SetScript("OnClick", function()
+        local txt = editBox:GetText() 
+        if not txt or txt == "" or txt == " " then return end
+        
+        local cleanText = txt:gsub("^%s*(.-)%s*$", "%1")
+        local spellID = tonumber(cleanText)
+        
+        if spellID then
+            local spellName = GetSpellInfo(spellID)
+            if spellName then txt = spellName end
+        end
+        
+        if not RAY_Config.specSettings then 
+            RAY_Config.specSettings = {} 
+        end
+        if not RAY_Config.specSettings[specNum] then 
+            RAY_Config.specSettings[specNum] = { spells = {}, sets = {}, buffs = {}, icds = {} } 
+        end
+        if not RAY_Config.specSettings[specNum][storageKey] then 
+            RAY_Config.specSettings[specNum][storageKey] = {} 
+        end
+        
+        local itemData = { 
+            name = txt, 
+            seconds = isIcd and "45/5" or nil, 
+            onlyInCombat = false, 
+            zoneWorld = true, 
+            zoneParty = true, 
+            zoneRaid = true, 
+            invert = false, 
+            isPetTracker = false 
+        }
+        
+        table.insert(RAY_Config.specSettings[specNum][storageKey], itemData)
+        local insertedIndex = #RAY_Config.specSettings[specNum][storageKey]
+        editBox:SetText("")
+        
+        RefreshLocalSubList(specNum, storageKey) 
+        if RAY_Engine.CheckAllAuras then 
+            RAY_Engine.CheckAllAuras() 
+        end
+        
+        -- АВТОМАТИКА: Сразу открываем черное окно для свежедобавленной настройки
+        OpenSetsModal(specNum, storageKey, insertedIndex, headerColorCode)
+    end)
 end
-if not RAY_Config.specSettings then RAY_Config.specSettings = {} end
-if not RAY_Config.specSettings[specNum] then RAY_Config.specSettings[specNum] = { spells = {}, sets = {}, buffs = {}, icds = {} } end
-if not RAY_Config.specSettings[specNum][storageKey] then RAY_Config.specSettings[specNum][storageKey] = {} end
-local itemData = { name = txt, seconds = isIcd and "45/5" or nil, onlyInCombat = false, zoneWorld = true, zoneParty = true, zoneRaid = true, invert = false, isPetTracker = false }
-table.insert(RAY_Config.specSettings[specNum][storageKey], itemData)
-local insertedIndex = #RAY_Config.specSettings[specNum][storageKey]
-editBox:SetText("")
-RefreshLocalSubList(specNum, storageKey) if RAY_Engine.CheckAllAuras then RAY_Engine.CheckAllAuras() end
--- АВТОМАТИКА: Сразу открываем черное окно для свежедобавленной настройки
-OpenSetsModal(specNum, storageKey, insertedIndex, headerColorCode)
-end)
+
+    BuildInputFieldBlock("Комплект экипировки:", "sets", "Введите ТОЧНОЕ название вашего комплекта вещей.", false, 0)
+    BuildInputFieldBlock("Стойка / Бафф:", "buffs", "Обязательная аура, присутствие или стойка (например, 'Власть льда').", false, 1)
+    BuildInputFieldBlock("Прок триньки / КД:", "icds", "Введите имя баффа аксессуара для отслеживания его ICD.", true, 2)
 end
-BuildInputFieldBlock("Комплект экипировки:", "sets", "Введите ТОЧНОЕ название вашего комплекта вещей.", false, 0)
-BuildInputFieldBlock("Стойка / Бафф:", "buffs", "Обязательная аура, присутствие или стойка (например, 'Власть льда').", false, 1)
-BuildInputFieldBlock("Прок триньки / КД:", "icds", "Введите имя баффа аксессуара для отслеживания его ICD.", true, 2)
-end
+
 CreateSubPageBlock(1, -15, COLOR_SPEC1, "ПЕРВАЯ ВЕТКА (СПЕК 1)")
 CreateSubPageBlock(2, -500, COLOR_SPEC2, "ВТОРАЯ ВЕТКА (СПЕК 2)") -- Компактно сдвинули Ветку 2 вверх
+
 setsPanel:HookScript("OnShow", function()
-modal:Hide()
-RefreshLocalSubList(1, "sets") RefreshLocalSubList(1, "buffs") RefreshLocalSubList(1, "icds")
-RefreshLocalSubList(2, "sets") RefreshLocalSubList(2, "buffs") RefreshLocalSubList(2, "icds")
+    modal:Hide()
+    RefreshLocalSubList(1, "sets") 
+    RefreshLocalSubList(1, "buffs") 
+    RefreshLocalSubList(1, "icds")
+    
+    RefreshLocalSubList(2, "sets") 
+    RefreshLocalSubList(2, "buffs") 
+    RefreshLocalSubList(2, "icds")
 end)
-setsPanel:HookScript("OnHide", function() modal:Hide() end)
+
+setsPanel:HookScript("OnHide", function() 
+    modal:Hide() 
+end)
+
 InterfaceOptions_AddCategory(setsPanel)
-if BuildVerticalAuraPage_UpdateAll then BuildVerticalAuraPage_UpdateAll() end
+
+if BuildVerticalAuraPage_UpdateAll then 
+    BuildVerticalAuraPage_UpdateAll() 
 end
+end
+
 -- Финальный инициализатор для применения структуры данных SavedVariables при входе
 local loginCheck = CreateFrame("Frame")
 loginCheck:RegisterEvent("PLAYER_LOGIN")
 loginCheck:SetScript("OnEvent", function()
-if type(RAY_Engine.RebuildSpellsLookup) == "function" then RAY_Engine.RebuildSpellsLookup() end
-if RAY_Engine.CheckAllAuras then RAY_Engine.CheckAllAuras() end
+    if type(RAY_Engine.RebuildSpellsLookup) == "function" then 
+        RAY_Engine.RebuildSpellsLookup() 
+    end
+    if RAY_Engine.CheckAllAuras then 
+        RAY_Engine.CheckAllAuras() 
+    end
 end)
