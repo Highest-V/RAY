@@ -180,14 +180,15 @@ function RAY_Engine.ProcessBuffs(activeProfile, inCombat, currentZone, curTime, 
                     end
                 end
                 
-                if needAlert then
+                                if needAlert then
                     local displayName = buff.name
                     local msg = ""
                     if buff.invert then
                         msg = "|cffFF7676RAY: Сними [" .. displayName .. "]" .. customReason .. "!|r"
                     else
-                    local alertPrefix = buff.isPetTracker and "RAY: Призови [" or "RAY: Включи ["
-                    msg = "|cffA8FF35" .. alertPrefix .. displayName .. "]" .. customReason .. "!|r"
+                        local alertPrefix = buff.isPetTracker and "RAY: Призови [" or "RAY: Включи ["
+                        msg = "|cffA8FF35" .. alertPrefix .. displayName .. "]" .. customReason .. "!|r"
+                    end
                     
                     RAY_Engine.uniqueAlerts[msg] = true
                     if buff.customSize and buff.customSize > mainFrameFontSize then 
@@ -197,5 +198,6 @@ function RAY_Engine.ProcessBuffs(activeProfile, inCombat, currentZone, curTime, 
             end
         end
     end
+    
     return mainFrameFontSize
 end
