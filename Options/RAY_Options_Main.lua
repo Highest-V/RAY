@@ -2,7 +2,6 @@ local shortcutFrame = CreateFrame("Frame")
 isSelfUpdating = false
 dragCbGlobal = nil
 
--- Общие вспомогательные функции для всех окон настроек
 function CreateBlizzardEditBox(parent, x, y, width, name)
     local eb = CreateFrame("EditBox", name, parent, "InputBoxTemplate")
     eb:SetSize(width, 24) eb:SetPoint("TOPLEFT", parent, "TOPLEFT", x, y) eb:SetAutoFocus(false)
@@ -10,9 +9,15 @@ function CreateBlizzardEditBox(parent, x, y, width, name)
     return eb
 end
 
--- Всплывающие подсказки
+-- Всплывающие подсказки с гарантированным выталкиванием на самый верхний слой
 function SetTooltip(widget, uText)
-    widget:SetScript("OnEnter", function(self) GameTooltip:SetOwner(self, "ANCHOR_RIGHT") GameTooltip:SetText(uText, 1, 1, 1, nil, true) GameTooltip:Show() end)
+    widget:SetScript("OnEnter", function(self) 
+        GameTooltip:SetOwner(self, "ANCHOR_RIGHT") 
+        GameTooltip:SetText(uText, 1, 1, 1, nil, true) 
+        -- Динамически поднимаем подсказку над уровнем кнопки, на которую навели
+        GameTooltip:SetFrameLevel(self:GetFrameLevel() + 5)
+        GameTooltip:Show() 
+    end)
     widget:SetScript("OnLeave", function() GameTooltip:Hide() end)
 end
 
@@ -120,30 +125,26 @@ shortcutFrame:SetScript("OnEvent", function()
     SetTooltip(cpSlider, "Задает количество КП, при достижении которого начнется оповещение (например, 5 КП).")
 
     local btnClear = CreateFrame("Button", nil, optionsPanel, "UIPanelButtonTemplate") btnClear:SetSize(140, 30) btnClear:SetPoint("TOPLEFT", 16, -305) btnClear:SetText("|cffFF7676Полный сброс|r")
-    btnClear:SetScript("OnClick", function() RAY_Config = nil ReloadUI() end)
-    SetTooltip(btnClear, "Полная очистка базы данных SavedVariables и перезагрузка интерфейса.")
-    
-    InterfaceOptions_AddCategory(optionsPanel)
-    
-    -- Оповещаем другие модули, что базовая панель создана, можно строить вкладки
-    if RAY_Engine.InitBuffsPage then RAY_Engine.InitBuffsPage() end
-    if RAY_Engine.InitDebuffsPage then RAY_Engine.InitDebuffsPage() end
-    if RAY_Engine.InitSetsPage then RAY_Engine.InitSetsPage() end
+btnClear:SetScript("OnClick", function() RAY_Config = nil ReloadUI() end)
+SetTooltip(btnClear, "Полная очистка базы данных SavedVariables и перезагрузка интерфейса.")
+InterfaceOptions_AddCategory(optionsPanel)
+-- Оповещаем другие модули, что базовая панель создана, можно строить вкладки
+if RAY_Engine.InitBuffsPage then RAY_Engine.InitBuffsPage() end
+if RAY_Engine.InitDebuffsPage then RAY_Engine.InitDebuffsPage() end
+if RAY_Engine.InitSetsPage then RAY_Engine.InitSetsPage() end
 end)
-
 -- Регистрация слеш-команд
 SLASH_RAY1 = "/ray"
 SlashCmdList["RAY"] = function(msg)
-    if optionsPanel then InterfaceOptionsFrame_OpenToCategory(optionsPanel) InterfaceOptionsFrame_OpenToCategory(optionsPanel) end
+if optionsPanel then InterfaceOptionsFrame_OpenToCategory(optionsPanel) InterfaceOptionsFrame_OpenToCategory(optionsPanel) end
 end
-
 SLASH_RAYMOVE1 = "/raymove"
 SlashCmdList["RAYMOVE"] = function()
-    local nextMoveState = RAY_Engine.frame and not RAY_Engine.frame:IsMouseEnabled() or false
-    ToggleRayMove(nextMoveState)
-    if nextMoveState then
-        DEFAULT_CHAT_FRAME:AddMessage("|cff4ECCA3[RAY]:|r Режим перемещения окон |cffA8FF35ВКЛЮЧЕН|r.")
-    else
+local nextMoveState = RAY_Engine.frame and not RAY_Engine.frame:IsMouseEnabled() or false
+ToggleRayMove(nextMoveState)
+if nextMoveState then
+DEFAULT_CHAT_FRAME:AddMessage("|cff4ECCA3[RAY]:|r Режим перемещения окон |cffA8FF35ВКЛЮЧЕН|r.")
+else
 DEFAULT_CHAT_FRAME:AddMessage("|cff4ECCA3[RAY]:|r Режим перемещения окон |cffFF7676ВЫКЛЮЧЕН|r.")
 end
 end

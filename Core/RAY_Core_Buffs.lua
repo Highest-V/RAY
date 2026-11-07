@@ -104,29 +104,96 @@ function RAY_Engine.ProcessBuffs(activeProfile, inCombat, currentZone, curTime, 
         for i = 1, #activeProfile.buffs do
             local buff = activeProfile.buffs[i]
             if buff and buff.name ~= "" and RAY_Engine.CheckSubRules(buff, inCombat, currentZone) then
-                local hasAura = false
+                local limitStacks = tonumber(buff.minStacks) or 0
+                local userAlertTime = tonumber(buff.alertTime) or 0
+                local prefix = " ст"
+                
+                local needAlert = false
+                local customReason = ""
+                
                 if buff.isPetTracker then
-                    if UnitExists("pet") and not UnitIsDead("pet") then hasAura = true end
+                    if UnitExists("pet") and not UnitIsDead("pet") then needAlert = false else needAlert = true end
                 else
-                    hasAura = RAY_Engine.CheckAuraGroupDirect("player", buff.name)
-                    if not hasAura then
+                    local target = buff.target or "player"
+                    local isActive, stacks, timeLeft = RAY_Engine.CheckAuraGroupDirect(target, buff.name)
+                    
+                    local isShapeshift = false
+                    if not isActive then
                         local currentFormIndex = GetShapeshiftForm()
                         if currentFormIndex and currentFormIndex > 0 then
                             local _, formName = GetShapeshiftFormInfo(currentFormIndex)
-                            if formName and RAY_Engine.CleanSpellName(formName) == RAY_Engine.CleanSpellName(buff.name) then hasAura = true end
+                            if formName and RAY_Engine.CleanSpellName(formName) == RAY_Engine.CleanSpellName(buff.name) then 
+                                isActive = true stacks = 1 timeLeft = 0 isShapeshift = true
+                            end
+                        end
+                    end
+                    
+                    local isAtMaxCap = (isActive and limitStacks > 0 and stacks >= limitStacks)
+                    
+                    if buff.invert then
+                        if isActive then
+                            if limitStacks > 0 and stacks < limitStacks and not buff.isStackProgress then
+                                needAlert = false
+                            elseif isAtMaxCap and buff.isHideCap then
+                                needAlert = false
+                            else
+                                needAlert = true
+                                if buff.isStackProgress and limitStacks > 0 then
+                                    customReason = " (" .. stacks .. "/" .. limitStacks .. prefix .. ")"
+                                end
+                            end
+                        end
+                    else
+                        if not isActive then
+                            needAlert = true
+                            if limitStacks > 0 then customReason = " (0/" .. limitStacks .. prefix .. ")" end
+                        else
+                            if limitStacks > 0 and stacks < limitStacks then
+                                if buff.isStackProgress then
+                                    needAlert = true 
+                                    customReason = " (" .. stacks .. "/" .. limitStacks .. prefix .. ")"
+                                else
+                                    needAlert = false
+                                end
+                            elseif isAtMaxCap then
+                                if buff.isHideCap then
+                                    needAlert = false
+                                else
+                                    needAlert = true 
+                                    local displayTime = ""
+                                    if userAlertTime > 0 and timeLeft <= userAlertTime and not isShapeshift then
+                                        displayTime = " " .. math.ceil(timeLeft) .. " сек"
+                                    end
+                                    customReason = (buff.isStackProgress and limitStacks > 0) and (" (" .. stacks .. "/" .. limitStacks .. prefix .. ")" .. displayTime) or displayTime
+                                end
+                            elseif userAlertTime > 0 and not isShapeshift then
+                                if timeLeft <= userAlertTime then
+                                    needAlert = true
+                                    customReason = " " .. math.ceil(timeLeft) .. " сек"
+                                else
+                                    needAlert = false
+                                end
+                            else
+                                needAlert = false
+                            end
                         end
                     end
                 end
-                if buff.invert then
-                    if hasAura then RAY_Engine.uniqueAlerts["|cffFF7676RAY: Сними [" .. buff.name .. "]!|r"] = true end
-                else
-                    if not hasAura then
-                        local displayName = buff.name
-                        RAY_Engine.uniqueAlerts[buff.isPetTracker and ("|cffA8FF35RAY: Призови [" .. displayName .. "]!|r") or ("|cffA8FF35RAY: Включи [" .. displayName .. "]!|r")] = true
-                    end
-                end
-            end
-        end
-    end
-    return mainFrameFontSize
+                
+                if needAlert then
+                    local displayName = buff.name
+                    local msg = ""
+                    if buff.invert then
+                        msg = "|cffFF7676RAY: Сними [" .. displayName .. "]" .. customReason .. "!|r"
+                    else
+local alertPrefix = buff.isPetTracker and "RAY: Призови [" or "RAY: Включи ["
+msg = "|cffA8FF35" .. alertPrefix .. displayName .. "]" .. customReason .. "!|r"
+end
+RAY_Engine.uniqueAlerts[msg] = true
+if buff.customSize and buff.customSize > mainFrameFontSize then mainFrameFontSize = buff.customSize end
+end
+end
+end
+end
+return mainFrameFontSize
 end

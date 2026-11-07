@@ -34,10 +34,17 @@ function RAY_Engine.ProcessDebuffs(activeProfile, inCombat, currentZone, curTime
                     needAlert = (not (start and start > 0 and duration > 1.5) and not RAY_Engine.CheckAuraGroupDirect("player", spellData.name))
                 else
                     local target = spellData.target or "player"
-                    local isActive, stacks, timeLeft, caster = RAY_Engine.CheckAuraGroupDirect(target, spellData.name)
+                    
+                    -- ЗАЩИТА: Безопасный динамический вызов функции сканирования аур
+                    local CheckFunc = RAY_Engine.CheckAuraGroupDirect
+                    local isActive, stacks, timeLeft, caster = false, 0, 0, nil
+                    if CheckFunc then
+                        isActive, stacks, timeLeft, caster = CheckFunc(target, spellData.name)
+                    end
+                    
                     local isAtMaxCap = false
                     if isActive and limitStacks > 0 and stacks >= limitStacks then
-                        isAtMaxCap = true hexColor = "FF0000" finalRGBColor = { r = 1, g = 0, b = 0 }
+                        isAtMaxCap = true
                     end
                     
                     if spellData.isExternalOnly then
@@ -48,28 +55,69 @@ function RAY_Engine.ProcessDebuffs(activeProfile, inCombat, currentZone, curTime
                     else
                         if spellData.isProc then
                             if isActive or (IsUsableSpell(spellData.name) and inCombat) then
-                                needAlert = true
-                                local displayTime = ""
-                                if timeLeft > 0 and timeLeft < 3600 and (userAlertTime == 0 or timeLeft <= userAlertTime) then displayTime = " " .. math.ceil(timeLeft) .. " сек" end
-                                customReason = (spellData.isStackProgress and limitStacks > 0) and (" (" .. stacks .. "/" .. limitStacks .. prefix .. ")" .. displayTime) or displayTime
+                                if limitStacks > 0 and stacks < limitStacks and not spellData.isStackProgress then
+                                    needAlert = false
+                                elseif isAtMaxCap and spellData.isHideCap then
+                                    needAlert = false
+                                else
+                                    needAlert = true
+                                    if isAtMaxCap then
+                                        hexColor = "FF0000" finalRGBColor = { r = 1, g = 0, b = 0 }
+                                    end
+                                    
+                                    local displayTime = ""
+                                    if timeLeft > 0 and timeLeft < 3600 and (userAlertTime == 0 or timeLeft <= userAlertTime) then 
+                                        displayTime = " " .. math.ceil(timeLeft) .. " сек" 
+                                    elseif userAlertTime > 0 and timeLeft > userAlertTime then
+                                        needAlert = false
+                                    end
+                                    
+                                    customReason = (spellData.isStackProgress and limitStacks > 0) and (" (" .. stacks .. "/" .. limitStacks .. prefix .. ")" .. displayTime) or displayTime
+                                end
                             end
                         else
                             if not isActive then
-                                needAlert = true if limitStacks > 0 then customReason = " (0/" .. limitStacks .. prefix .. ")" end
+                                needAlert = true 
+                                if limitStacks > 0 then customReason = " (0/" .. limitStacks .. prefix .. ")" end
                             else
-                                if spellData.isStackProgress and limitStacks > 0 and (stacks < limitStacks) then
-                                    needAlert = true customReason = " (" .. stacks .. "/" .. limitStacks .. prefix .. ")"
+                                if limitStacks > 0 and stacks < limitStacks then
+                                    if spellData.isStackProgress then
+                                        needAlert = true 
+                                        customReason = " (" .. stacks .. "/" .. limitStacks .. prefix .. ")"
+                                    else
+                                        needAlert = false
+                                    end
+                                    
+                                elseif isAtMaxCap then
+                                    if spellData.isHideCap then
+                                        needAlert = false
+                                    else
+                                        needAlert = true 
+                                        hexColor = "FF0000" finalRGBColor = { r = 1, g = 0, b = 0 }
+                                        
+                                        local displayTime = ""
+                                        if userAlertTime > 0 then
+                                            if timeLeft <= userAlertTime then
+                                                displayTime = " " .. math.ceil(timeLeft) .. " сек"
+                                            else
+                                                displayTime = "" 
+                                            end
+                                        else
+                                            displayTime = (timeLeft > 0 and timeLeft < 3600) and (" " .. math.ceil(timeLeft) .. " сек") or ""
+                                        end
+                                        
+                                        customReason = (spellData.isStackProgress and limitStacks > 0) and (" (" .. stacks .. "/" .. limitStacks .. prefix .. ")" .. displayTime) or displayTime
+                                    end
+                                    
                                 elseif userAlertTime > 0 then
                                     if timeLeft <= userAlertTime then
                                         needAlert = true
-                                        customReason = ((limitStacks > 0) and (" (" .. stacks .. "/" .. limitStacks .. prefix .. ") ") or "") .. math.ceil(timeLeft) .. " сек"
+                                        customReason = " " .. math.ceil(timeLeft) .. " сек"
+                                    else
+                                        needAlert = false
                                     end
                                 else
-                                    needAlert = isAtMaxCap and not spellData.isHideCap
-                                    if needAlert then
-                                        local displayTime = (timeLeft > 0 and timeLeft < 3600) and (" " .. math.ceil(timeLeft) .. " сек") or ""
-                                        customReason = " (" .. stacks .. "/" .. limitStacks .. prefix .. ")" .. displayTime
-                                    end
+                                    needAlert = false
                                 end
                             end
                         end
