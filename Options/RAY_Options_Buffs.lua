@@ -41,20 +41,58 @@ function RAY_Engine.InitBuffsPage()
     local colorBtn = CreateFrame("Button", nil, modal)
     local editTime, sliderStacks, specSlider, cbCombat, cbWorld, cbParty, cbRaid, cbCooldown, cbProc, cbWeapon, cbProgress, cbHideCap, cbExternal, cbSummon, cbOwnWindow
     
-    local dropDown = CreateFrame("Frame", "RAY_VDrop_"..panelName, modal, "UIDropDownMenuTemplate") dropDown:SetPoint("TOPLEFT", 6, -55) dropDown:SetSize(150, 25)
-    UIDropDownMenu_Initialize(dropDown, function()
-        local info = UIDropDownMenu_CreateInfo() info.text = "Игрок" info.value = "player"
-        info.func = function(self) UIDropDownMenu_SetSelectedValue(dropDown, self.value) UIDropDownMenu_SetText(dropDown, "Цель: Игрок") end
-        UIDropDownMenu_AddButton(info)
-        info = UIDropDownMenu_CreateInfo() info.text = "Текущая цель" info.value = "target"
-        info.func = function(self) UIDropDownMenu_SetSelectedValue(dropDown, self.value) UIDropDownMenu_SetText(dropDown, "Цель: Тек. цель") end
-        UIDropDownMenu_AddButton(info)
-    end)
-    SetTooltip(dropDown, "Указывает, на ком проверять наличие данного эффекта — на себе или на цели.")
+    local dropDown = CreateFrame("Frame", "RAY_Buffs_Target_DropDown", modal, "UIDropDownMenuTemplate") 
+    dropDown:SetPoint("TOPLEFT", 6, -55) 
+    dropDown:SetSize(150, 25)
+    dropDown:SetFrameStrata("TOOLTIP")
+    dropDown:SetFrameLevel(modal:GetFrameLevel() + 10)
 
     local tempConfig = { onlyInCombat = false, zoneWorld = false, zoneParty = false, zoneRaid = false, target = "player", isCooldown = false, isProc = false, isWeaponText = false, isStackProgress = false, isHideCap = false, isExternalOnly = false, isOwnWindow = false, isSummonObject = false, customSize = 24, color = { r = 0.5, g = 0.95, b = 0.8 } }
     local function GetActiveIndex() return _G[globalSelectedIndexRef] end
     local function SetActiveIndex(val) _G[globalSelectedIndexRef] = val end
+
+    dropDown.initialize = function()
+        local info = UIDropDownMenu_CreateInfo() 
+        info.text = "Игрок" 
+        info.value = "player"
+        info.func = function(self) 
+            UIDropDownMenu_SetSelectedValue(dropDown, self.value) 
+            UIDropDownMenu_SetText(dropDown, "Цель: Игрок") 
+            local idx = GetActiveIndex() local currentSpec = GetActiveTalentGroup() or 1
+            if idx and RAY_Config.specSettings[currentSpec].spells[idx] then
+                RAY_Config.specSettings[currentSpec].spells[idx].target = "player"
+                if RAY_Engine.CheckAllAuras then RAY_Engine.CheckAllAuras() end
+            else tempConfig.target = "player" end
+            CloseDropDownMenus()
+        end
+        UIDropDownMenu_AddButton(info)
+
+        info = UIDropDownMenu_CreateInfo() 
+        info.text = "Текущая цель" 
+        info.value = "target"
+        info.func = function(self) 
+            UIDropDownMenu_SetSelectedValue(dropDown, self.value) 
+            UIDropDownMenu_SetText(dropDown, "Цель: Тек. цель") 
+            local idx = GetActiveIndex() local currentSpec = GetActiveTalentGroup() or 1
+            if idx and RAY_Config.specSettings[currentSpec].spells[idx] then
+                RAY_Config.specSettings[currentSpec].spells[idx].target = "target"
+                if RAY_Engine.CheckAllAuras then RAY_Engine.CheckAllAuras() end
+            else tempConfig.target = "target" end
+            CloseDropDownMenus()
+        end
+        UIDropDownMenu_AddButton(info)
+    end
+
+    _G[dropDown:GetName().."Button"]:SetScript("OnClick", function(self)
+        ToggleDropDownMenu(1, nil, dropDown, dropDown:GetName(), 0, 0)
+        if DropDownList1 then
+            DropDownList1:SetFrameStrata("TOOLTIP")
+            DropDownList1:SetFrameLevel(modal:GetFrameLevel() + 20)
+        end
+    end)
+    
+    SetTooltip(dropDown, "Указывает, на ком проверять наличие данного эффекта — на себе или на цели.")
+
     local currentY = -95
 
     local function AddVerticalCheckbox(label, tText, key)
@@ -88,10 +126,8 @@ function RAY_Engine.InitBuffsPage()
     local rowY = currentY - 40
     cbOwnWindow = CreateFrame("CheckButton", "RAY_BuffsOwnWinCheck", modal, "InterfaceOptionsCheckButtonTemplate") cbOwnWindow:SetSize(26, 26) cbOwnWindow:SetPoint("TOPLEFT", modal, "TOPLEFT", 20, rowY)
     local cbTextObj = _G[cbOwnWindow:GetName() .. "Text"] if cbTextObj then cbTextObj:SetText(textColor .. "Окно|r") cbTextObj:ClearAllPoints() cbTextObj:SetPoint("LEFT", cbOwnWindow, "RIGHT", 4, 1) end
-    cbOwnWindow:SetScript("OnClick", function(self) local idx = GetActiveIndex() local val = self:GetChecked() and true or false if idx then local currentSpec = GetActiveTalentGroup() or 1 if RAY_Config.specSettings[currentSpec].spells[idx] then RAY_Config.specSettings[currentSpec].spells[idx].isOwnWindow = val if RAY_Engine.CheckAllAuras then RAY_Engine.CheckAllAuras() end end else tempConfig.isOwnWindow = val end end)
-    SetTooltip(cbOwnWindow, "Отвяждает алерт от общего фрейма и создает для него персональное перемещаемое окно.")
-    
-    colorBtn:SetSize(18, 18) colorBtn:SetPoint("TOPLEFT", modal, "TOPLEFT", 210, rowY - 2)
+cbOwnWindow:SetScript("OnClick", function(self) local idx = GetActiveIndex() local val = self:GetChecked() and true or false if idx then local currentSpec = GetActiveTalentGroup() or 1 if RAY_Config.specSettings[currentSpec].spells[idx] then RAY_Config.specSettings[currentSpec].spells[idx].isOwnWindow = val if RAY_Engine.CheckAllAuras then RAY_Engine.CheckAllAuras() end end else tempConfig.isOwnWindow = val end end)
+SetTooltip(cbOwnWindow, "Отвязывает алерт от общего фрейма и создает для него персональное перемещаемое окно.")    colorBtn:SetSize(18, 18) colorBtn:SetPoint("TOPLEFT", modal, "TOPLEFT", 210, rowY - 2)
     local cTex = colorBtn:CreateTexture(nil, "BACKGROUND") cTex:SetAllPoints() cTex:SetTexture(0.5, 0.95, 0.8) colorBtn.tex = cTex
     local defaultColorBtn = CreateFrame("Button", nil, modal, "UIPanelButtonTemplate") defaultColorBtn:SetSize(130, 18) defaultColorBtn:SetPoint("LEFT", colorBtn, "RIGHT", 10, 0) defaultColorBtn:SetText("Цвет по умолчанию")
     SetTooltip(colorBtn, "Открыть палитру цветов для текста этого алерта.")
@@ -209,6 +245,8 @@ function RAY_Engine.InitBuffsPage()
                             cbOwnWindow:SetChecked(data.isOwnWindow == true) 
                             specSlider:SetValue(data.customSize or 24)
 
+                            UIDropDownMenu_Initialize(dropDown, dropDown.initialize)
+
                             local c = data.color or { r = 0.5, g = 0.95, b = 0.8 }
                             colorBtn.tex:SetVertexColor(c.r or 0.5, c.g or 0.95, c.b or 0.8) 
                             tempConfig.color = { r = c.r or 0.5, g = c.g or 0.95, b = c.b or 0.8 }
@@ -282,110 +320,114 @@ function RAY_Engine.InitBuffsPage()
         ColorPickerFrame.hasOpacity = false
         ColorPickerFrame:SetColorRGB(current.r or 0.5, current.g or 0.95, current.b or 0.8)
         ColorPickerFrame:SetFrameStrata("TOOLTIP")
-        ColorPickerFrame:Hide()
-        ColorPickerFrame:Show()
-    end)
+ColorPickerFrame:Hide()
+ColorPickerFrame:Show()
+end)
 
-    defaultColorBtn:SetScript("OnClick", function()
-        local def = { r = 0.5, g = 0.95, b = 0.8 }
-        colorBtn.tex:SetVertexColor(def.r, def.g, def.b)
-        
-        local idx = GetActiveIndex()
-        if idx then
-            local currentSpec = GetActiveTalentGroup() or 1
-            if RAY_Config.specSettings[currentSpec].spells[idx] then
-                RAY_Config.specSettings[currentSpec].spells[idx].color = { r = def.r, g = def.g, b = def.b }
-            end
-        end
-        
-        tempConfig.color = { r = def.r, g = def.g, b = def.b }
-        if RAY_Engine.CheckAllAuras then RAY_Engine.CheckAllAuras() end
-        LocalUpdateLists()
-    end)
-
-    btnOk:SetScript("OnClick", function()
-        local txt = editBox:GetText()
-        if not txt or txt == "" or txt == " " then return end
-        
-        local cleanText = txt:gsub("^%s*(.-)%s*$", "%1")
-        local spellID = tonumber(cleanText)
-        if spellID then
-            local spellName = GetSpellInfo(spellID)
-            if spellName then txt = spellName end
-        end
-        
-        local item = {
-            name = txt,
-            mode = modeType,
-            target = "player",
-            minStacks = 0,
-            alertTime = 0,
-            onlyInCombat = false,
-            zoneWorld = true,
-            zoneParty = true,
-            zoneRaid = true,
-            isCooldown = false,
-            isProc = false,
-            isWeaponText = false,
-            isStackProgress = false,
-            isHideCap = false,
-            isExternalOnly = false,
-            isSummonObject = false,
-            isOwnWindow = false,
-            customSize = 24,
-            color = { r = 0.5, g = 0.95, b = 0.8 }
-        }
-        
+defaultColorBtn:SetScript("OnClick", function()
+    local def = { r = 0.5, g = 0.95, b = 0.8 }
+    colorBtn.tex:SetVertexColor(def.r, def.g, def.b)
+    
+    local idx = GetActiveIndex()
+    if idx then
         local currentSpec = GetActiveTalentGroup() or 1
-        if not RAY_Config.specSettings then RAY_Config.specSettings = {} end
-        if not RAY_Config.specSettings[currentSpec] then RAY_Config.specSettings[currentSpec] = { spells = {}, sets = {}, buffs = {}, icds = {} } end
-        if not RAY_Config.specSettings[currentSpec].spells then RAY_Config.specSettings[currentSpec].spells = {} end
-        
-        table.insert(RAY_Config.specSettings[currentSpec].spells, item)
-        local newIndex = #RAY_Config.specSettings[currentSpec].spells
-        editBox:SetText("")
-        
-        RAY_Engine.RebuildSpellsLookup()
-        LocalUpdateLists()
-        if BuildVerticalAuraPage_UpdateAll then BuildVerticalAuraPage_UpdateAll() end
-        if RAY_Engine.CheckAllAuras then RAY_Engine.CheckAllAuras() end
-        
-        SetActiveIndex(newIndex)
-        mTitle:SetText(textColor .. (string.match(tostring(item.name), "[^|/]+") or item.name) .. "|r")
-        UIDropDownMenu_SetSelectedValue(dropDown, item.target or "player")
-        UIDropDownMenu_SetText(dropDown, item.target == "target" and "Цель: Тек. цель" or "Цель: Игрок")
-        editTime:SetText(tostring(item.alertTime or 0))
-        sliderStacks:SetValue(item.minStacks or 0)
-        cbCombat:SetChecked(item.onlyInCombat == true)
-        cbWorld:SetChecked(item.zoneWorld == true)
-        cbParty:SetChecked(item.zoneParty == true)
-        cbRaid:SetChecked(item.zoneRaid == true)
-        cbCooldown:SetChecked(item.isCooldown == true)
-        cbProc:SetChecked(item.isProc == true)
-        cbWeapon:SetChecked(item.isWeaponText == true)
-        cbProgress:SetChecked(item.isStackProgress == true)
-        cbHideCap:SetChecked(item.isHideCap == true)
-        cbExternal:SetChecked(item.isExternalOnly == true)
-        cbSummon:SetChecked(item.isSummonObject == true)
-        cbOwnWindow:SetChecked(item.isOwnWindow == true)
-        specSlider:SetValue(item.customSize or 24)
-        
-        colorBtn.tex:SetVertexColor(item.color.r or 0.5, item.color.g or 0.95, item.color.b or 0.8)
-        tempConfig.color = { r = item.color.r or 0.5, g = item.color.g or 0.95, b = item.color.b or 0.8 }
-        modal:Show()
-    end)
+        if RAY_Config.specSettings[currentSpec].spells[idx] then
+            RAY_Config.specSettings[currentSpec].spells[idx].color = { r = def.r, g = def.g, b = def.b }
+        end
+    end
+    
+    tempConfig.color = { r = def.r, g = def.g, b = def.b }
+    if RAY_Engine.CheckAllAuras then RAY_Engine.CheckAllAuras() end
+    LocalUpdateLists()
+end)
 
-    panel:HookScript("OnShow", function()
-        modal:Hide()
-        SetActiveIndex(nil)
-        editBox:SetText("")
-        LocalUpdateLists()
-    end)
+btnOk:SetScript("OnClick", function()
+    local txt = editBox:GetText()
+    if not txt or txt == "" or txt == " " then return end
+    
+    local cleanText = txt:gsub("^%s*(.-)%s*$", "%1")
+    local spellID = tonumber(cleanText)
+    if spellID then
+        local spellName = GetSpellInfo(spellID)
+        if spellName then txt = spellName end
+    end
+    
+    local item = {
+        name = txt,
+        mode = modeType,
+        target = "player",
+        minStacks = 0,
+        alertTime = 0,
+        onlyInCombat = false,
+        zoneWorld = true,
+        zoneParty = true,
+        zoneRaid = true,
+        isCooldown = false,
+        isProc = false,
+        isWeaponText = false,
+        isStackProgress = false,
+        isHideCap = false,
+        isExternalOnly = false,
+        isSummonObject = false,
+        isOwnWindow = false,
+        customSize = 24,
+        color = { r = 0.5, g = 0.95, b = 0.8 }
+    }
 
-    panel:HookScript("OnHide", function()
-        modal:Hide()
-    end)
+local currentSpec = GetActiveTalentGroup() or 1
 
-    InterfaceOptions_AddCategory(panel)
-    updateBuffsGlobalRef = LocalUpdateLists
+if not RAY_Config.specSettings then RAY_Config.specSettings = {} end
+if not RAY_Config.specSettings[currentSpec] then RAY_Config.specSettings[currentSpec] = { spells = {}, sets = {}, buffs = {}, icds = {} } end
+if not RAY_Config.specSettings[currentSpec].spells then RAY_Config.specSettings[currentSpec].spells = {} end
+
+table.insert(RAY_Config.specSettings[currentSpec].spells, item)
+local newIndex = #RAY_Config.specSettings[currentSpec].spells
+editBox:SetText("")
+
+RAY_Engine.RebuildSpellsLookup()
+LocalUpdateLists()
+
+if BuildVerticalAuraPage_UpdateAll then BuildVerticalAuraPage_UpdateAll() end
+if RAY_Engine.CheckAllAuras then RAY_Engine.CheckAllAuras() end
+
+SetActiveIndex(newIndex)
+mTitle:SetText(textColor .. (string.match(tostring(item.name), "[^|/]+") or item.name) .. "|r")
+UIDropDownMenu_SetSelectedValue(dropDown, item.target or "player")
+UIDropDownMenu_SetText(dropDown, item.target == "target" and "Цель: Тек. цель" or "Цель: Игрок")
+editTime:SetText(tostring(item.alertTime or 0))
+sliderStacks:SetValue(item.minStacks or 0)
+
+cbCombat:SetChecked(item.onlyInCombat == true)
+cbWorld:SetChecked(item.zoneWorld == true)
+cbParty:SetChecked(item.zoneParty == true)
+cbRaid:SetChecked(item.zoneRaid == true)
+cbCooldown:SetChecked(item.isCooldown == true)
+cbProc:SetChecked(item.isProc == true)
+cbWeapon:SetChecked(item.isWeaponText == true)
+cbProgress:SetChecked(item.isStackProgress == true)
+cbHideCap:SetChecked(item.isHideCap == true)
+cbExternal:SetChecked(item.isExternalOnly == true)
+cbSummon:SetChecked(item.isSummonObject == true)
+cbOwnWindow:SetChecked(item.isOwnWindow == true)
+
+specSlider:SetValue(item.customSize or 24)
+colorBtn.tex:SetVertexColor(item.color.r or 0.5, item.color.g or 0.95, item.color.b or 0.8)
+tempConfig.color = { r = item.color.r or 0.5, g = item.color.g or 0.95, b = item.color.b or 0.8 }
+
+modal:Show()
+end)
+
+panel:HookScript("OnShow", function()
+    modal:Hide()
+    SetActiveIndex(nil)
+    editBox:SetText("")
+    LocalUpdateLists()
+end)
+
+panel:HookScript("OnHide", function()
+    modal:Hide()
+end)
+
+InterfaceOptions_AddCategory(panel)
+updateBuffsGlobalRef = LocalUpdateLists
 end

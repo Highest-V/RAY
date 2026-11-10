@@ -2,7 +2,7 @@
 ## Title: RAY - Remember About Yourself (Modular)
 ## Notes: Универсальный мультиконструктор, который напоминает о селф-баффах.
 ## Author: Highest-V
-## Version: 7.5
+## Version: 7.6
 ## SavedVariablesPerCharacter: RAY_Config
 
 # --- ЯДРО АДДОНА (БАЗА И МОДУЛИ ЛОГИКИ) ---

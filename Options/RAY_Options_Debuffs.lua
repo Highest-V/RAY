@@ -28,7 +28,7 @@ function RAY_Engine.InitDebuffsPage()
         tile = true, tileSize = 32, edgeSize = 32,
         insets = { left = 11, right = 12, top = 12, bottom = 11 }
     })
-    modal:SetBackdropColor(0, 0, 0, 1) -- Сплошной черный непрозрачный фон
+    modal:SetBackdropColor(0, 0, 0, 1)
     
     modal:SetMovable(true) modal:EnableMouse(true) modal:RegisterForDrag("LeftButton")
     modal:SetScript("OnDragStart", modal.StartMoving) modal:SetScript("OnDragStop", modal.StopMovingOrSizing)
@@ -41,15 +41,12 @@ function RAY_Engine.InitDebuffsPage()
     local colorBtn = CreateFrame("Button", nil, modal)
     local editTime, sliderStacks, specSlider, cbCombat, cbWorld, cbParty, cbRaid, cbCooldown, cbProc, cbWeapon, cbProgress, cbHideCap, cbExternal, cbSummon, cbOwnWindow
     
-    local dropDown = CreateFrame("Frame", "RAY_VDrop_"..panelName, modal, "UIDropDownMenuTemplate") 
+    -- Уникальное имя и высокий уровень слоя
+    local dropDown = CreateFrame("Frame", "RAY_Debuffs_Target_DropDown", modal, "UIDropDownMenuTemplate") 
     dropDown:SetPoint("TOPLEFT", 6, -55) 
     dropDown:SetSize(150, 25)
-    dropDown:SetFrameLevel(modal:GetFrameLevel() + 5)
     dropDown:SetFrameStrata("TOOLTIP")
-
-    _G[dropDown:GetName().."Button"]:SetScript("OnClick", function(self)
-        ToggleDropDownMenu(1, nil, dropDown, self:GetParent():GetName(), 0, 0)
-    end)
+    dropDown:SetFrameLevel(modal:GetFrameLevel() + 10)
 
     local tempConfig = { onlyInCombat = false, zoneWorld = false, zoneParty = false, zoneRaid = false, target = "target", isCooldown = false, isProc = false, isWeaponText = false, isStackProgress = false, isHideCap = false, isExternalOnly = false, isOwnWindow = false, isSummonObject = false, customSize = 24, color = { r = 0.5, g = 0.95, b = 0.8 } }
     local function GetActiveIndex() return _G[globalSelectedIndexRef] end
@@ -86,6 +83,15 @@ function RAY_Engine.InitDebuffsPage()
         end
         UIDropDownMenu_AddButton(info)
     end
+
+    -- Перехват клика близзардовского DropDownList1 и вытягивание его наверх
+    _G[dropDown:GetName().."Button"]:SetScript("OnClick", function(self)
+        ToggleDropDownMenu(1, nil, dropDown, dropDown:GetName(), 0, 0)
+        if DropDownList1 then
+            DropDownList1:SetFrameStrata("TOOLTIP")
+            DropDownList1:SetFrameLevel(modal:GetFrameLevel() + 20)
+        end
+    end)
     SetTooltip(dropDown, "Указывает, на ком проверять наличие данного эффекта — на себе или на цели.")
 
     local currentY = -95
@@ -121,115 +127,334 @@ function RAY_Engine.InitDebuffsPage()
     local rowY = currentY - 40
     cbOwnWindow = CreateFrame("CheckButton", "RAY_DebuffsOwnWinCheck", modal, "InterfaceOptionsCheckButtonTemplate") cbOwnWindow:SetSize(26, 26) cbOwnWindow:SetPoint("TOPLEFT", modal, "TOPLEFT", 20, rowY)
     local cbTextObj = _G[cbOwnWindow:GetName() .. "Text"] if cbTextObj then cbTextObj:SetText(textColor .. "Окно|r") cbTextObj:ClearAllPoints() cbTextObj:SetPoint("LEFT", cbOwnWindow, "RIGHT", 4, 1) end
-    cbOwnWindow:SetScript("OnClick", function(self) local idx = GetActiveIndex() local val = self:GetChecked() and true or false if idx then local currentSpec = GetActiveTalentGroup() or 1 if RAY_Config.specSettings[currentSpec].spells[idx] then RAY_Config.specSettings[currentSpec].spells[idx].isOwnWindow = val if RAY_Engine.CheckAllAuras then RAY_Engine.CheckAllAuras() end end else tempConfig.isOwnWindow = val end end)
-SetTooltip(cbOwnWindow, "Отвяждает алерт от общего фрейма и создает для него персональное перемещаемое окно.")
-colorBtn:SetSize(18, 18) colorBtn:SetPoint("TOPLEFT", modal, "TOPLEFT", 210, rowY - 2)
-local cTex = colorBtn:CreateTexture(nil, "BACKGROUND") cTex:SetAllPoints() cTex:SetTexture(0.5, 0.95, 0.8) colorBtn.tex = cTex
-local defaultColorBtn = CreateFrame("Button", nil, modal, "UIPanelButtonTemplate") defaultColorBtn:SetSize(130, 18) defaultColorBtn:SetPoint("LEFT", colorBtn, "RIGHT", 10, 0) defaultColorBtn:SetText("Цвет по умолчанию")
+cbOwnWindow:SetScript("OnClick", function(self)
+    local idx = GetActiveIndex()
+    local val = self:GetChecked() and true or false
+    if idx then
+        local currentSpec = GetActiveTalentGroup() or 1
+        if RAY_Config.specSettings[currentSpec].spells[idx] then
+            RAY_Config.specSettings[currentSpec].spells[idx].isOwnWindow = val
+            if RAY_Engine.CheckAllAuras then RAY_Engine.CheckAllAuras() end
+        end
+    else
+        tempConfig.isOwnWindow = val
+    end
+end)
+
+SetTooltip(cbOwnWindow, "Отвязывает алерт от общего фрейма и создает для него персональное перемещаемое окно.")
+
+colorBtn:SetSize(18, 18)
+colorBtn:SetPoint("TOPLEFT", modal, "TOPLEFT", 210, rowY - 2)
+
+local cTex = colorBtn:CreateTexture(nil, "BACKGROUND")
+cTex:SetAllPoints()
+cTex:SetTexture(0.5, 0.95, 0.8)
+colorBtn.tex = cTex
+
+local defaultColorBtn = CreateFrame("Button", nil, modal, "UIPanelButtonTemplate")
+defaultColorBtn:SetSize(130, 18)
+defaultColorBtn:SetPoint("LEFT", colorBtn, "RIGHT", 10, 0)
+defaultColorBtn:SetText("Цвет по умолчанию")
+
 SetTooltip(colorBtn, "Открыть палитру цветов для текста этого алерта.")
 SetTooltip(defaultColorBtn, "Сбросить цвет к стандартному бирюзовому.")
+
 currentY = rowY - 42
 editTime = CreateBlizzardEditBox(modal, 20, currentY, 110, "RAY_DebuffsTimeBox")
-local etText = modal:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall") etText:SetPoint("BOTTOMLEFT", editTime, "TOPLEFT", 0, 4) etText:SetText("Порог времени (сек):")
+
+local etText = modal:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+etText:SetPoint("BOTTOMLEFT", editTime, "TOPLEFT", 0, 4)
+etText:SetText("Порог времени (сек):")
+
 editTime:SetScript("OnTextChanged", function(self)
-local val = tonumber(self:GetText()) or 0 local idx = GetActiveIndex()
-if idx then local currentSpec = GetActiveTalentGroup() or 1 if RAY_Config.specSettings[currentSpec].spells[idx] then RAY_Config.specSettings[currentSpec].spells[idx].alertTime = val if RAY_Engine.CheckAllAuras then RAY_Engine.CheckAllAuras() end end else tempConfig.alertTime = val end
+    local val = tonumber(self:GetText()) or 0
+    local idx = GetActiveIndex()
+    if idx then
+        local currentSpec = GetActiveTalentGroup() or 1
+        if RAY_Config.specSettings[currentSpec].spells[idx] then
+            RAY_Config.specSettings[currentSpec].spells[idx].alertTime = val
+            if RAY_Engine.CheckAllAuras then RAY_Engine.CheckAllAuras() end
+        end
+    else
+        tempConfig.alertTime = val
+    end
 end)
+
 SetTooltip(editTime, "Запуск посекундного обратного отсчета. Начнет напоминать за X сек до окончания действия баффа/дебаффа.")
-sliderStacks = CreateFrame("Slider", "RAY_DebuffsInterStk", modal, "OptionsSliderTemplate") sliderStacks:SetSize(140, 16) sliderStacks:SetPoint("TOPLEFT", modal, "TOPLEFT", 210, currentY) sliderStacks:SetMinMaxValues(0, 10) sliderStacks:SetValueStep(1)
-local ssText2 = sliderStacks:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall") ssText2:SetPoint("BOTTOMLEFT", sliderStacks, "TOPLEFT", 0, 4)
-sliderStacks:SetScript("OnValueChanged", function(self, value) local val = math.floor(value) ssText2:SetText("Порог стаков: " .. val) local idx = GetActiveIndex() if idx then local currentSpec = GetActiveTalentGroup() or 1 if RAY_Config.specSettings[currentSpec].spells[idx] then RAY_Config.specSettings[currentSpec].spells[idx].minStacks = val if RAY_Engine.CheckAllAuras then RAY_Engine.CheckAllAuras() end end else tempConfig.minStacks = val end end)
+
+sliderStacks = CreateFrame("Slider", "RAY_DebuffsInterStk", modal, "OptionsSliderTemplate")
+sliderStacks:SetSize(140, 16)
+sliderStacks:SetPoint("TOPLEFT", modal, "TOPLEFT", 210, currentY)
+sliderStacks:SetMinMaxValues(0, 10)
+sliderStacks:SetValueStep(1)
+
+local ssText2 = sliderStacks:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+ssText2:SetPoint("BOTTOMLEFT", sliderStacks, "TOPLEFT", 0, 4)
+
+sliderStacks:SetScript("OnValueChanged", function(self, value)
+    local val = math.floor(value)
+    ssText2:SetText("Порог стаков: " .. val)
+    local idx = GetActiveIndex()
+    if idx then
+        local currentSpec = GetActiveTalentGroup() or 1
+        if RAY_Config.specSettings[currentSpec].spells[idx] then
+            RAY_Config.specSettings[currentSpec].spells[idx].minStacks = val
+            if RAY_Engine.CheckAllAuras then RAY_Engine.CheckAllAuras() end
+        end
+    else
+        tempConfig.minStacks = val
+    end
+end)
+
 SetTooltip(sliderStacks, "Целевой кап стаков для отображения (будет выводить динамику вроде '1/4', '2/4'...).")
+
 local function LocalUpdateLists()
-for _, b in ipairs(_G[listButtonsRef]) do b:Hide() end local count = 1
-local currentSpec = GetActiveTalentGroup() or 1
-local spells = RAY_Config.specSettings and RAY_Config.specSettings[currentSpec] and RAY_Config.specSettings[currentSpec].spells
-if not spells then return end
-for i = 1, #spells do
-local spellData = spells[i]
-if spellData and spellData.mode == modeType then
-local btn = _G[listButtonsRef][count]
-if not btn then
-btn = CreateFrame("Button", nil, listFrame) btn:SetSize(310, 24) btn:SetNormalFontObject("GameFontNormal")
-local hl = btn:CreateTexture(nil, "HIGHLIGHT")
-hl:SetTexture("Interface\\QuestFrame\\UI-QuestLogTitleHighlight")
-hl:SetBlendMode("ADD") hl:SetVertexColor(1, 0.8, 0, 0.4) hl:SetAllPoints(btn)
-btn:SetHighlightTexture(hl)
-local activeTex = btn:CreateTexture(nil, "OVERLAY")
-activeTex:SetTexture("Interface\\QuestFrame\\UI-QuestLogTitleHighlight")
-activeTex:SetBlendMode("ADD") activeTex:SetVertexColor(1, 0.8, 0, 0.3) activeTex:SetAllPoints(btn)
-activeTex:Hide() btn.goldSelect = activeTex
-local del = CreateFrame("Button", nil, btn, "UIPanelCloseButton") del:SetSize(18, 18) del:SetPoint("RIGHT", btn, "RIGHT", -2, 0) btn.delBtn = del
-btn:SetScript("OnClick", function(self)
-if isSelfUpdating then return end SetActiveIndex(self.spellIndex)
-for _, b in ipairs(_G[listButtonsRef]) do if b.goldSelect then b.goldSelect:Hide() end end
-if self.goldSelect then self.goldSelect:Show() end
-local data = RAY_Config.specSettings[currentSpec].spells[self.spellIndex]
-if data then
-isSelfUpdating = true
-mTitle:SetText(textColor .. (string.match(tostring(data.name), "[^|/]+") or data.name) .. "|r")
-UIDropDownMenu_SetSelectedValue(dropDown, data.target or "target") UIDropDownMenu_SetText(dropDown, data.target == "player" and "Цель: Игрок" or "Цель: Тек. цель")
-editTime:SetText(tostring(data.alertTime or 0)) sliderStacks:SetValue(data.minStacks or 0) cbCombat:SetChecked(data.onlyInCombat == true) cbWorld:SetChecked(data.zoneWorld == true) cbParty:SetChecked(data.zoneParty == true) cbRaid:SetChecked(data.zoneRaid == true) cbCooldown:SetChecked(data.isCooldown == true) cbProc:SetChecked(data.isProc == true) cbWeapon:SetChecked(data.isWeaponText == true) cbProgress:SetChecked(data.isStackProgress == true) cbHideCap:SetChecked(data.isHideCap == true) cbExternal:SetChecked(data.isExternalOnly == true) cbSummon:SetChecked(data.isSummonObject == true) cbOwnWindow:SetChecked(data.isOwnWindow == true) specSlider:SetValue(data.customSize or 24)
-local c = data.color or { r = 0.5, g = 0.95, b = 0.8 }
-colorBtn.tex:SetVertexColor(c.r or 0.5, c.g or 0.95, c.b or 0.8) tempConfig.color = { r = c.r or 0.5, g = c.g or 0.95, b = c.b or 0.8 }
-isSelfUpdating = false
-modal:Show()
+    for _, b in ipairs(_G[listButtonsRef]) do b:Hide() end
+    local count = 1
+    local currentSpec = GetActiveTalentGroup() or 1
+    local spells = RAY_Config.specSettings and RAY_Config.specSettings[currentSpec] and RAY_Config.specSettings[currentSpec].spells
+    if not spells then return end
+    
+    for i = 1, #spells do
+        local spellData = spells[i]
+        if spellData and spellData.mode == modeType then
+            local btn = _G[listButtonsRef][count]
+            if not btn then
+                btn = CreateFrame("Button", nil, listFrame)
+                btn:SetSize(310, 24)
+                btn:SetNormalFontObject("GameFontNormal")
+                
+                local hl = btn:CreateTexture(nil, "HIGHLIGHT")
+                hl:SetTexture("Interface\\QuestFrame\\UI-QuestLogTitleHighlight")
+                hl:SetBlendMode("ADD")
+                hl:SetVertexColor(1, 0.8, 0, 0.4)
+                hl:SetAllPoints(btn)
+                btn:SetHighlightTexture(hl)
+                
+                local activeTex = btn:CreateTexture(nil, "OVERLAY")
+                activeTex:SetTexture("Interface\\QuestFrame\\UI-QuestLogTitleHighlight")
+                activeTex:SetBlendMode("ADD")
+                activeTex:SetVertexColor(1, 0.8, 0, 0.3)
+                activeTex:SetAllPoints(btn)
+                activeTex:Hide()
+                btn.goldSelect = activeTex
+                
+                local del = CreateFrame("Button", nil, btn, "UIPanelCloseButton")
+                del:SetSize(18, 18)
+                del:SetPoint("RIGHT", btn, "RIGHT", -2, 0)
+                btn.delBtn = del
+                
+                btn:SetScript("OnClick", function(self)
+                    if isSelfUpdating then return end
+                    SetActiveIndex(self.spellIndex)
+                    for _, b in ipairs(_G[listButtonsRef]) do
+                        if b.goldSelect then b.goldSelect:Hide() end
+                    end
+                    if self.goldSelect then self.goldSelect:Show() end
+                    local data = RAY_Config.specSettings[currentSpec].spells[self.spellIndex]
+                    if data then
+                        isSelfUpdating = true
+                        mTitle:SetText(textColor .. (string.match(tostring(data.name), "[^|/]+") or data.name) .. "|r")
+                        UIDropDownMenu_SetSelectedValue(dropDown, data.target or "target")
+                        UIDropDownMenu_SetText(dropDown, data.target == "player" and "Цель: Игрок" or "Цель: Тек. цель")
+                        editTime:SetText(tostring(data.alertTime or 0))
+                        sliderStacks:SetValue(data.minStacks or 0)
+                        cbCombat:SetChecked(data.onlyInCombat == true)
+                        cbWorld:SetChecked(data.zoneWorld == true)
+                        cbParty:SetChecked(data.zoneParty == true)
+                        cbRaid:SetChecked(data.zoneRaid == true)
+                        cbCooldown:SetChecked(data.isCooldown == true)
+                        cbProc:SetChecked(data.isProc == true)
+                        cbWeapon:SetChecked(data.isWeaponText == true)
+                        cbProgress:SetChecked(data.isStackProgress == true)
+                        cbHideCap:SetChecked(data.isHideCap == true)
+                        cbExternal:SetChecked(data.isExternalOnly == true)
+                        cbSummon:SetChecked(data.isSummonObject == true)
+                        cbOwnWindow:SetChecked(data.isOwnWindow == true)
+                        specSlider:SetValue(data.customSize or 24)
+                        
+                        UIDropDownMenu_Initialize(dropDown, dropDown.initialize)
+                        
+                        local c = data.color or { r = 0.5, g = 0.95, b = 0.8 }
+                        colorBtn.tex:SetVertexColor(c.r or 0.5, c.g or 0.95, c.b or 0.8)
+                        tempConfig.color = { r = c.r or 0.5, g = c.g or 0.95, b = c.b or 0.8 }
+                        
+                        isSelfUpdating = false
+                        modal:Show()
+                    end
+                end)
+                
+                btn.delBtn:SetScript("OnClick", function(self)
+                    local p = self:GetParent()
+                    table.remove(RAY_Config.specSettings[currentSpec].spells, p.spellIndex)
+                    SetActiveIndex(nil)
+                    modal:Hide()
+                    RAY_Engine.RebuildSpellsLookup()
+                    if BuildVerticalAuraPage_UpdateAll then BuildVerticalAuraPage_UpdateAll() end
+                    if RAY_Engine.CheckAllAuras then RAY_Engine.CheckAllAuras() end
+                    LocalUpdateLists()
+                end)
+                
+                _G[listButtonsRef][count] = btn
+            end
+            
+            btn.spellIndex = i
+            btn:ClearAllPoints()
+            btn:SetPoint("TOPLEFT", listFrame, "TOPLEFT", 4, -((count - 1) * 26))
+            
+            local rawName = tostring(spellData.name):gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")
+            local itemColor = spellData.color or { r = 0.5, g = 0.95, b = 0.8 }
+            local r = (itemColor.r or 0.5) * 255
+            local g = (itemColor.g or 0.95) * 255
+            local b = (itemColor.b or 0.8) * 255
+            
+            btn:SetText(string.format("|cff%02x%02x%02x%s|r", r, g, b, string.match(rawName, "[^|/]+") or "Пусто"))
+            btn:Show()
+            
+            if GetActiveIndex() == i then
+                btn.goldSelect:Show()
+            else
+                btn.goldSelect:Hide()
+            end
+            count = count + 1
+        end
+    end
+    listFrame:SetHeight(count * 26 + 20)
 end
-end)
-btn.delBtn:SetScript("OnClick", function(self)
-local p = self:GetParent()
-table.remove(RAY_Config.specSettings[currentSpec].spells, p.spellIndex) SetActiveIndex(nil) modal:Hide()
-RAY_Engine.RebuildSpellsLookup() if BuildVerticalAuraPage_UpdateAll then BuildVerticalAuraPage_UpdateAll() end if RAY_Engine.CheckAllAuras then RAY_Engine.CheckAllAuras() end
-LocalUpdateLists()
-end)
-_G[listButtonsRef][count] = btn
-end
-btn.spellIndex = i btn:ClearAllPoints() btn:SetPoint("TOPLEFT", listFrame, "TOPLEFT", 4, -((count - 1) * 26))
-local rawName = tostring(spellData.name):gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")
-local itemColor = spellData.color or { r = 0.5, g = 0.95, b = 0.8 }
-local r = (itemColor.r or 0.5) * 255
-local g = (itemColor.g or 0.95) * 255
-local b = (itemColor.b or 0.8) * 255
-btn:SetText(string.format("|cff%02x%02x%02x%s|r", r, g, b, string.match(rawName, "[^|/]+") or "Пусто")) btn:Show()
-if GetActiveIndex() == i then btn.goldSelect:Show() else btn.goldSelect:Hide() end count = count + 1
-end
-end
-listFrame:SetHeight(count * 26 + 20)
-end
+
 local function ColorCallback()
-local r, g, b = ColorPickerFrame:GetColorRGB() colorBtn.tex:SetVertexColor(r, g, b) local idx = GetActiveIndex() if idx then local currentSpec = GetActiveTalentGroup() or 1 if RAY_Config.specSettings[currentSpec].spells[idx] then RAY_Config.specSettings[currentSpec].spells[idx].color = { r = r, g = g, b = b } end end tempConfig.color = { r = r, g = g, b = b } if RAY_Engine.CheckAllAuras then RAY_Engine.CheckAllAuras() end LocalUpdateLists()
+    local r, g, b = ColorPickerFrame:GetColorRGB()
+    colorBtn.tex:SetVertexColor(r, g, b)
+    
+    local idx = GetActiveIndex()
+    if idx then
+        local currentSpec = GetActiveTalentGroup() or 1
+        if RAY_Config.specSettings[currentSpec].spells[idx] then
+            RAY_Config.specSettings[currentSpec].spells[idx].color = { r = r, g = g, b = b }
+        end
+    end
+    
+    tempConfig.color = { r = r, g = g, b = b }
+    if RAY_Engine.CheckAllAuras then RAY_Engine.CheckAllAuras() end
+    LocalUpdateLists()
 end
-colorBtn:SetScript("OnClick", function() local idx = GetActiveIndex() local currentSpec = GetActiveTalentGroup() or 1 local current = (idx and RAY_Config.specSettings[currentSpec].spells[idx] and RAY_Config.specSettings[currentSpec].spells[idx].color) or tempConfig.color or { r = 0.5, g = 0.95, b = 0.8 } ColorPickerFrame.func = ColorCallback ColorPickerFrame.hasOpacity = false ColorPickerFrame:SetColorRGB(current.r or 0.5, current.g or 0.95, current.b or 0.8) ColorPickerFrame:SetFrameStrata("TOOLTIP") ColorPickerFrame:Hide() ColorPickerFrame:Show() end)
-defaultColorBtn:SetScript("OnClick", function() local def = { r = 0.5, g = 0.95, b = 0.8 } colorBtn.tex:SetVertexColor(def.r, def.g, def.b) local idx = GetActiveIndex() if idx then local currentSpec = GetActiveTalentGroup() or 1 if RAY_Config.specSettings[currentSpec].spells[idx] then RAY_Config.specSettings[currentSpec].spells[idx].color = { r = def.r, g = def.g, b = def.b } end end tempConfig.color = { r = def.r, g = def.g, b = def.b } if RAY_Engine.CheckAllAuras then RAY_Engine.CheckAllAuras() end LocalUpdateLists() end)
-btnOk:SetScript("OnClick", function()
-local txt = editBox:GetText() if not txt or txt == "" or txt == " " then return end
-local cleanText = txt:gsub("^%s*(.-)%s*$", "%1")
-local spellID = tonumber(cleanText)
-if spellID then
-local spellName = GetSpellInfo(spellID)
-if spellName then txt = spellName end
-end
-local item = { name = txt, mode = modeType, target = "target", minStacks = 0, alertTime = 0, onlyInCombat = false, zoneWorld = true, zoneParty = true, zoneRaid = true, isCooldown = false, isProc = false, isWeaponText = false, isStackProgress = false, isHideCap = false, isExternalOnly = false, isSummonObject = false, isOwnWindow = false, customSize = 24, color = { r = 0.5, g = 0.95, b = 0.8 } }
-local currentSpec = GetActiveTalentGroup() or 1
-if not RAY_Config.specSettings then RAY_Config.specSettings = {} end
-if not RAY_Config.specSettings[currentSpec] then RAY_Config.specSettings[currentSpec] = { spells = {}, sets = {}, buffs = {}, icds = {} } end
-if not RAY_Config.specSettings[currentSpec].spells then RAY_Config.specSettings[currentSpec].spells = {} end
-table.insert(RAY_Config.specSettings[currentSpec].spells, item)
-local newIndex = #RAY_Config.specSettings[currentSpec].spells
-editBox:SetText("")
-RAY_Engine.RebuildSpellsLookup()
-LocalUpdateLists()
-if BuildVerticalAuraPage_UpdateAll then BuildVerticalAuraPage_UpdateAll() end
-if RAY_Engine.CheckAllAuras then RAY_Engine.CheckAllAuras() end
-SetActiveIndex(newIndex)
-mTitle:SetText(textColor .. (string.match(tostring(item.name), "[^|/]+") or item.name) .. "|r")
-UIDropDownMenu_SetSelectedValue(dropDown, item.target or "target") UIDropDownMenu_SetText(dropDown, item.target == "player" and "Цель: Игрок" or "Цель: Тек. цель")
-editTime:SetText(tostring(item.alertTime or 0)) sliderStacks:SetValue(item.minStacks or 0) cbCombat:SetChecked(item.onlyInCombat == true) cbWorld:SetChecked(item.zoneWorld == true) cbParty:SetChecked(item.zoneParty == true) cbRaid:SetChecked(item.zoneRaid == true) cbCooldown:SetChecked(item.isCooldown == true) cbProc:SetChecked(item.isProc == true) cbWeapon:SetChecked(item.isWeaponText == true) cbProgress:SetChecked(item.isStackProgress == true) cbHideCap:SetChecked(item.isHideCap == true) cbExternal:SetChecked(item.isExternalOnly == true) cbSummon:SetChecked(item.isSummonObject == true) cbOwnWindow:SetChecked(item.isOwnWindow == true) specSlider:SetValue(item.customSize or 24)
-colorBtn.tex:SetVertexColor(item.color.r or 0.5, item.color.g or 0.95, item.color.b or 0.8) tempConfig.color = { r = item.color.r or 0.5, g = item.color.g or 0.95, b = item.color.b or 0.8 }
-modal:Show()
+
+colorBtn:SetScript("OnClick", function()
+    local idx = GetActiveIndex()
+    local currentSpec = GetActiveTalentGroup() or 1
+    local current = (idx and RAY_Config.specSettings[currentSpec].spells[idx] and RAY_Config.specSettings[currentSpec].spells[idx].color) or tempConfig.color or { r = 0.5, g = 0.95, b = 0.8 }
+    
+    ColorPickerFrame.func = ColorCallback
+    ColorPickerFrame.hasOpacity = false
+    ColorPickerFrame:SetColorRGB(current.r or 0.5, current.g or 0.95, current.b or 0.8)
+    ColorPickerFrame:SetFrameStrata("TOOLTIP")
+    ColorPickerFrame:Hide()
+    ColorPickerFrame:Show()
 end)
-panel:HookScript("OnShow", function() modal:Hide() SetActiveIndex(nil) editBox:SetText("") LocalUpdateLists() end)
-panel:HookScript("OnHide", function() modal:Hide() end)
+
+defaultColorBtn:SetScript("OnClick", function()
+    local def = { r = 0.5, g = 0.95, b = 0.8 }
+    colorBtn.tex:SetVertexColor(def.r, def.g, def.b)
+    
+    local idx = GetActiveIndex()
+    if idx then
+        local currentSpec = GetActiveTalentGroup() or 1
+        if RAY_Config.specSettings[currentSpec].spells[idx] then
+            RAY_Config.specSettings[currentSpec].spells[idx].color = { r = def.r, g = def.g, b = def.b }
+        end
+    end
+    
+    tempConfig.color = { r = def.r, g = def.g, b = def.b }
+    if RAY_Engine.CheckAllAuras then RAY_Engine.CheckAllAuras() end
+    LocalUpdateLists()
+end)
+
+btnOk:SetScript("OnClick", function()
+    local txt = editBox:GetText()
+    if not txt or txt == "" or txt == " " then return end
+    
+    local cleanText = txt:gsub("^%s*(.-)%s*$", "%1")
+    local spellID = tonumber(cleanText)
+    if spellID then
+        local spellName = GetSpellInfo(spellID)
+        if spellName then txt = spellName end
+    end
+    
+    local item = {
+        name = txt,
+        mode = modeType,
+        target = "target",
+        minStacks = 0,
+        alertTime = 0,
+        onlyInCombat = false,
+        zoneWorld = true,
+        zoneParty = true,
+        zoneRaid = true,
+        isCooldown = false,
+        isProc = false,
+        isWeaponText = false,
+        isStackProgress = false,
+        isHideCap = false,
+        isExternalOnly = false,
+        isSummonObject = false,
+        isOwnWindow = false,
+        customSize = 24,
+        color = { r = 0.5, g = 0.95, b = 0.8 }
+    }
+    
+    local currentSpec = GetActiveTalentGroup() or 1
+    if not RAY_Config.specSettings then RAY_Config.specSettings = {} end
+    if not RAY_Config.specSettings[currentSpec] then RAY_Config.specSettings[currentSpec] = { spells = {}, sets = {}, buffs = {}, icds = {} } end
+    if not RAY_Config.specSettings[currentSpec].spells then RAY_Config.specSettings[currentSpec].spells = {} end
+    
+    table.insert(RAY_Config.specSettings[currentSpec].spells, item)
+    local newIndex = #RAY_Config.specSettings[currentSpec].spells
+    editBox:SetText("")
+    
+    RAY_Engine.RebuildSpellsLookup()
+    LocalUpdateLists()
+    
+    if BuildVerticalAuraPage_UpdateAll then BuildVerticalAuraPage_UpdateAll() end
+    if RAY_Engine.CheckAllAuras then RAY_Engine.CheckAllAuras() end
+    
+    SetActiveIndex(newIndex)
+    mTitle:SetText(textColor .. (string.match(tostring(item.name), "[^|/]+") or item.name) .. "|r")
+    UIDropDownMenu_SetSelectedValue(dropDown, item.target or "target")
+    UIDropDownMenu_SetText(dropDown, item.target == "player" and "Цель: Игрок" or "Цель: Тек. цель")
+    editTime:SetText(tostring(item.alertTime or 0))
+    sliderStacks:SetValue(item.minStacks or 0)
+    
+    cbCombat:SetChecked(item.onlyInCombat == true)
+    cbWorld:SetChecked(item.zoneWorld == true)
+    cbParty:SetChecked(item.zoneParty == true)
+    cbRaid:SetChecked(item.zoneRaid == true)
+    cbCooldown:SetChecked(item.isCooldown == true)
+    cbProc:SetChecked(item.isProc == true)
+    cbWeapon:SetChecked(item.isWeaponText == true)
+    cbProgress:SetChecked(item.isStackProgress == true)
+    cbHideCap:SetChecked(item.isHideCap == true)
+    cbExternal:SetChecked(item.isExternalOnly == true)
+    cbSummon:SetChecked(item.isSummonObject == true)
+    cbOwnWindow:SetChecked(item.isOwnWindow == true)
+    specSlider:SetValue(item.customSize or 24)
+    
+    colorBtn.tex:SetVertexColor(item.color.r or 0.5, item.color.g or 0.95, item.color.b or 0.8)
+    tempConfig.color = { r = item.color.r or 0.5, g = item.color.g or 0.95, b = item.color.b or 0.8 }
+    
+    modal:Show()
+end)
+
+panel:HookScript("OnShow", function()
+    modal:Hide()
+    SetActiveIndex(nil)
+    editBox:SetText("")
+    LocalUpdateLists()
+end)
+
+panel:HookScript("OnHide", function()
+    modal:Hide()
+end)
+
 InterfaceOptions_AddCategory(panel)
 updateDebuffsGlobalRef = LocalUpdateLists
 end
