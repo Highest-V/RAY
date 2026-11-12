@@ -1,4 +1,4 @@
-# RAY — Remember About Yourself (v7.0)
+# RAY — Remember About Yourself
 
 **RAY (Remember About Yourself)** — это универсальный модульный аддон-конструктор для **World of Warcraft 3.3.5 (Wrath of the Lich King)**. Он предназначен для создания текстовых напоминаний и алертов о ваших собственных способностях, проках, баффах, дебаффах, комплектах экипировки и внутренних кулдаунах аксессуаров (ICD).
 
