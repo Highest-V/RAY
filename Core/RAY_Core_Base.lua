@@ -17,6 +17,8 @@ RAY_defaultSettings = {
     boxHunterEnabled = true,
     comboTrackerEnabled = true,
     comboTrackerLimit = 5,
+    radarSpells = {},
+
     framePos = { point = "CENTER", x = 0, y = 150 },
     customFramePositions = {},
     specSettings = {
@@ -28,6 +30,8 @@ RAY_defaultSettings = {
 RAY_Engine.customFramesPool      = {}
 RAY_Engine.activeSummonAlerts    = {}
 RAY_Engine.activeICDTimers       = {}
+RAY_Engine.activeRadarAlerts     = {}
+RAY_Engine.radarLookup           = {}
 RAY_Engine.uniqueAlerts          = {}
 RAY_Engine.alertStringTable      = {}
 RAY_Engine.customAlertsByWindow  = {}
@@ -116,6 +120,23 @@ function RAY_Engine.RebuildSpellsLookup()
     end
 end
 
+function RAY_Engine.RebuildRadarLookup()
+    wipe(RAY_Engine.radarLookup)
+    if not RAY_Config or not RAY_Config.radarSpells then return end
+    for i = 1, #RAY_Config.radarSpells do
+        local rData = RAY_Config.radarSpells[i]
+        if rData and rData.name and rData.name ~= "" then
+            local clean = RAY_Engine.CleanSpellName(rData.name)
+            if clean ~= "" then RAY_Engine.radarLookup[clean] = rData end
+            for subName in string.gmatch(rData.name:lower(), "[^|/]+") do
+                subName = RAY_Engine.CleanSpellName(subName)
+                if subName ~= "" then RAY_Engine.radarLookup[subName] = rData end
+            end
+        end
+    end
+end
+
+
 function GetOrCreateCustomFrame(spellName)
     local frameKey = RAY_Engine.GetFrameKey(spellName)
     if RAY_Engine.customFramesPool[frameKey] then return RAY_Engine.customFramesPool[frameKey] end
@@ -188,6 +209,32 @@ RAY_Engine.CheckAllAuras = function()
             end
         end
     end
+
+    if RAY_Engine.activeRadarAlerts then
+        for rKey, rAlert in pairs(RAY_Engine.activeRadarAlerts) do
+            if curTime <= rAlert.endTime then
+                local rem = math.max(1, math.ceil(rAlert.endTime - curTime))
+                local hex = RAY_Engine.GetCachedHexColor(rAlert.color)
+                local msg = "|cff" .. hex .. "[Радар]: " .. rAlert.casterText .. " -> [" .. rAlert.spellName .. "] " .. rem .. " сек|r"
+                if rAlert.isOwnWindow then
+                    local fKey = "Radar_" .. RAY_Engine.GetFrameKey(rAlert.configKey)
+                    RAY_Engine.customAlertsByWindow[fKey] = {
+                        text = msg,
+                        color = rAlert.color or RAY_Engine.GetDefaultColor(),
+                        size = rAlert.customSize or 24
+                    }
+                else
+                    RAY_Engine.uniqueAlerts[msg] = true
+                    if rAlert.customSize and rAlert.customSize > mainFrameFontSize then
+                        mainFrameFontSize = rAlert.customSize
+                    end
+                end
+            else
+                RAY_Engine.activeRadarAlerts[rKey] = nil
+            end
+        end
+    end
+
 
     local activeProfile = RAY_Config.specSettings and RAY_Config.specSettings[currentSpec]
     if not activeProfile then return end
