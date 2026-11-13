@@ -1,3 +1,4 @@
+
 -- Вынесено в функцию-конструктор, которая вызывается из главного файла при логине
 function RAY_Engine.InitBuffsPage()
     local panelName, modeType, textColor, globalSelectedIndexRef, listButtonsRef = "RAY-buffs", "BUFF", PASTEL_BUFF, "selBuffIdxG", "listBtnBufG"
@@ -11,7 +12,7 @@ function RAY_Engine.InitBuffsPage()
     local editBox = CreateBlizzardEditBox(panel, 16, -50, 240, "RAY_EBox_"..panelName)
     local elabel = panel:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall") elabel:SetPoint("BOTTOMLEFT", editBox, "TOPLEFT", 2, 6) elabel:SetText("Название эффекта / ID способности:")
     local btnOk = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate") btnOk:SetSize(55, 25) btnOk:SetPoint("LEFT", editBox, "RIGHT", 8, 0) btnOk:SetText(PASTEL_YELLOW.."ОК|r")
-    SetTooltip(btnOk, "Сохранить ауру в список спека.")
+    RAY_SetTooltip(btnOk, "Сохранить ауру в список спека.")
 
     local listHeader = panel:CreateFontString(nil, "OVERLAY", "GameFontNormal") listHeader:SetPoint("TOPLEFT", 16, -95) listHeader:SetText(PASTEL_GRAY .. "Список настроек спека:|r")
 
@@ -91,7 +92,7 @@ function RAY_Engine.InitBuffsPage()
         end
     end)
     
-    SetTooltip(dropDown, "Указывает, на ком проверять наличие данного эффекта — на себе или на цели.")
+    RAY_SetTooltip(dropDown, "Указывает, на ком проверять наличие данного эффекта — на себе или на цели.")
 
     local currentY = -95
 
@@ -99,7 +100,7 @@ function RAY_Engine.InitBuffsPage()
         local cb = CreateFrame("CheckButton", nil, modal, "InterfaceOptionsCheckButtonTemplate") cb:SetPoint("TOPLEFT", 16, currentY) cb:SetScale(0.95)
         local t = cb:CreateFontString(nil, "OVERLAY", "GameFontNormal") t:SetPoint("LEFT", cb, "RIGHT", 5, 1) t:SetText(textColor..label.."|r")
         cb:SetScript("OnClick", function(self) local idx = GetActiveIndex() local val = self:GetChecked() and true or false if idx then local currentSpec = GetActiveTalentGroup() or 1 if RAY_Config.specSettings[currentSpec].spells[idx] then RAY_Config.specSettings[currentSpec].spells[idx][key] = val if RAY_Engine.CheckAllAuras then RAY_Engine.CheckAllAuras() end end else tempConfig[key] = val end end)
-        SetTooltip(cb, tText) currentY = currentY - 26 return cb
+        RAY_SetTooltip(cb, tText) currentY = currentY - 26 return cb
     end
 
     cbCombat   = AddVerticalCheckbox("Включать только в бою", "Скрывает напоминание, если вы находитесь вне боя.", "onlyInCombat")
@@ -121,17 +122,17 @@ function RAY_Engine.InitBuffsPage()
         local val = math.floor(value) ssText:SetText("Размер шрифта: " .. val) local idx = GetActiveIndex()
         if idx then local currentSpec = GetActiveTalentGroup() or 1 if RAY_Config.specSettings[currentSpec].spells[idx] then RAY_Config.specSettings[currentSpec].spells[idx].customSize = val if RAY_Engine.CheckAllAuras then RAY_Engine.CheckAllAuras() end end else tempConfig.customSize = val end
     end)
-    SetTooltip(specSlider, "Индивидуальный размер текста для данного оповещения.")
+    RAY_SetTooltip(specSlider, "Индивидуальный размер текста для данного оповещения.")
     
     local rowY = currentY - 40
     cbOwnWindow = CreateFrame("CheckButton", "RAY_BuffsOwnWinCheck", modal, "InterfaceOptionsCheckButtonTemplate") cbOwnWindow:SetSize(26, 26) cbOwnWindow:SetPoint("TOPLEFT", modal, "TOPLEFT", 20, rowY)
     local cbTextObj = _G[cbOwnWindow:GetName() .. "Text"] if cbTextObj then cbTextObj:SetText(textColor .. "Окно|r") cbTextObj:ClearAllPoints() cbTextObj:SetPoint("LEFT", cbOwnWindow, "RIGHT", 4, 1) end
 cbOwnWindow:SetScript("OnClick", function(self) local idx = GetActiveIndex() local val = self:GetChecked() and true or false if idx then local currentSpec = GetActiveTalentGroup() or 1 if RAY_Config.specSettings[currentSpec].spells[idx] then RAY_Config.specSettings[currentSpec].spells[idx].isOwnWindow = val if RAY_Engine.CheckAllAuras then RAY_Engine.CheckAllAuras() end end else tempConfig.isOwnWindow = val end end)
-SetTooltip(cbOwnWindow, "Отвязывает алерт от общего фрейма и создает для него персональное перемещаемое окно.")    colorBtn:SetSize(18, 18) colorBtn:SetPoint("TOPLEFT", modal, "TOPLEFT", 210, rowY - 2)
+RAY_SetTooltip(cbOwnWindow, "Отвязывает алерт от общего фрейма и создает для него персональное перемещаемое окно.")    colorBtn:SetSize(18, 18) colorBtn:SetPoint("TOPLEFT", modal, "TOPLEFT", 210, rowY - 2)
     local cTex = colorBtn:CreateTexture(nil, "BACKGROUND") cTex:SetAllPoints() cTex:SetTexture(0.5, 0.95, 0.8) colorBtn.tex = cTex
     local defaultColorBtn = CreateFrame("Button", nil, modal, "UIPanelButtonTemplate") defaultColorBtn:SetSize(130, 18) defaultColorBtn:SetPoint("LEFT", colorBtn, "RIGHT", 10, 0) defaultColorBtn:SetText("Цвет по умолчанию")
-    SetTooltip(colorBtn, "Открыть палитру цветов для текста этого алерта.")
-    SetTooltip(defaultColorBtn, "Сбросить цвет к стандартному бирюзовому.")
+    RAY_SetTooltip(colorBtn, "Открыть палитру цветов для текста этого алерта.")
+    RAY_SetTooltip(defaultColorBtn, "Сбросить цвет к стандартному бирюзовому.")
     
     currentY = rowY - 42
     editTime = CreateBlizzardEditBox(modal, 20, currentY, 110, "RAY_BuffsTimeBox")
@@ -150,7 +151,7 @@ SetTooltip(cbOwnWindow, "Отвязывает алерт от общего фр�
         end
     end)
 
-    SetTooltip(editTime, "Запуск посекундного обратного отсчета. Начнет напоминать за X сек до окончания действия баффа/дебаффа.")
+    RAY_SetTooltip(editTime, "Запуск посекундного обратного отсчета. Начнет напоминать за X сек до окончания действия баффа/дебаффа.")
 
     sliderStacks = CreateFrame("Slider", "RAY_BuffsInterStk", modal, "OptionsSliderTemplate") 
     sliderStacks:SetSize(140, 16) 
@@ -176,7 +177,7 @@ SetTooltip(cbOwnWindow, "Отвязывает алерт от общего фр�
         end 
     end)
 
-    SetTooltip(sliderStacks, "Целевой кап стаков для отображения (будет выводить динамику вроде '1/4', '2/4'...).")
+    RAY_SetTooltip(sliderStacks, "Целевой кап стаков для отображения (будет выводить динамику вроде '1/4', '2/4'...).")
 
     local function LocalUpdateLists()
         for _, b in ipairs(_G[listButtonsRef]) do b:Hide() end 
@@ -315,7 +316,8 @@ SetTooltip(cbOwnWindow, "Отвязывает алерт от общего фр�
         local idx = GetActiveIndex()
         local currentSpec = GetActiveTalentGroup() or 1
         local current = (idx and RAY_Config.specSettings[currentSpec].spells[idx] and RAY_Config.specSettings[currentSpec].spells[idx].color) or tempConfig.color or { r = 0.5, g = 0.95, b = 0.8 }
-        
+        ColorPickerFrame.opacityFunc = nil
+        ColorPickerFrame.cancelFunc = nil
         ColorPickerFrame.func = ColorCallback
         ColorPickerFrame.hasOpacity = false
         ColorPickerFrame:SetColorRGB(current.r or 0.5, current.g or 0.95, current.b or 0.8)
