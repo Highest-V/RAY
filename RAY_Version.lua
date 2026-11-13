@@ -3,7 +3,7 @@
 --  Слушаем RAY_vers -> отвечаем my_RAY_vers со своей версией
 -- ============================================================
 
-RAY_addonVersion = "8.0"
+RAY_addonVersion = "8.1"
 RAY_requestPrefix = "RAY_vers"
 RAY_replyPrefix   = "my_RAY_vers"
 
