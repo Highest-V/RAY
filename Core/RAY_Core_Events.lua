@@ -20,12 +20,14 @@ engineEvents:SetScript("OnEvent", function(self, event, arg1, ...)
             RAY_Engine.frame:SetPoint(RAY_Config.framePos.point, UIParent, RAY_Config.framePos.point, RAY_Config.framePos.x, RAY_Config.framePos.y)
         end
         RAY_Engine.RebuildSpellsLookup()
+        if RAY_Engine.RebuildRadarLookup then RAY_Engine.RebuildRadarLookup() end
     elseif event == "PLAYER_ENTERING_WORLD" then
         DEFAULT_CHAT_FRAME:AddMessage("|cff4ECCA3RAY - Remember About Yourself|r |cffffffffНастройка /ray. Перемещение /raymove.|r")
         local activeSpec = GetActiveTalentGroup() or 1
         local specColor = (activeSpec == 1) and COLOR_SPEC1 or COLOR_SPEC2
         DEFAULT_CHAT_FRAME:AddMessage(PASTEL_TITLE .. "[RAY Загрузка]:|r Profile initialized: Spec " .. specColor .. activeSpec .. "|r")
         RAY_Engine.RebuildSpellsLookup()
+        if RAY_Engine.RebuildRadarLookup then RAY_Engine.RebuildRadarLookup() end
         if RAY_Engine.UpdateEquipmentSetsCache then RAY_Engine.UpdateEquipmentSetsCache() end
         if RAY_Engine.UpdateCustomGearEnchantCache then RAY_Engine.UpdateCustomGearEnchantCache() end
         RAY_Engine.Engine_lastDbgHash = ""
