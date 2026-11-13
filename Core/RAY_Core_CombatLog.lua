@@ -15,6 +15,44 @@ combatLogFrame:SetScript("OnEvent", function(self, event, ...)
         end
     end
 
+    -- РЛ-Радар (отслеживание выбранных способностей по журналу боя)
+    if RAY_Config and RAY_Config.enabled and RAY_Engine.radarLookup and spellName then
+        if subEvent == "SPELL_CAST_SUCCESS" or subEvent == "SPELL_SUMMON" or subEvent == "SPELL_AURA_APPLIED" or subEvent == "SPELL_INTERRUPT" then
+            local cleanLogSpell = RAY_Engine.CleanSpellName(spellName)
+            local radarData = RAY_Engine.radarLookup[cleanLogSpell] or RAY_Engine.radarLookup[tostring(spellID)]
+            if radarData then
+                local inCombat = UnitAffectingCombat("player")
+                if not radarData.onlyInCombat or inCombat then
+                    local dur = tonumber(radarData.duration) or 5
+                    if dur <= 0 then dur = 5 end
+
+                    local casterDisplay = sourceName or "Неизвестно"
+                    if sourceName and UnitExists(sourceName) then
+                        local _, class = UnitClass(sourceName)
+                        if class and RAID_CLASS_COLORS[class] then
+                            local c = RAID_CLASS_COLORS[class]
+                            casterDisplay = string.format("|cff%02x%02x%02x%s|r", math.floor(c.r * 255), math.floor(c.g * 255), math.floor(c.b * 255), sourceName)
+                        end
+                    end
+
+                    local cleanDisplay = tostring(spellName):gsub("%s+[IVXLCDM]+%s*$", ""):gsub("%s*$", "")
+                    local alertKey = cleanLogSpell .. "_" .. tostring(sourceGUID or "unknown")
+                    RAY_Engine.activeRadarAlerts[alertKey] = {
+                        endTime = curTime + dur,
+                        casterText = casterDisplay,
+                        spellName = cleanDisplay,
+                        color = radarData.color or { r = 0.5, g = 0.95, b = 0.8 },
+                        customSize = radarData.customSize or 24,
+                        isOwnWindow = radarData.isOwnWindow == true,
+                        configKey = radarData.name
+                    }
+                    RAY_Engine.Engine_lastDbgHash = ""
+                    RAY_Engine.CheckAllAuras()
+                end
+            end
+        end
+    end
+
     -- Наша неизменяемая шкатулка Сильваны
     if subEvent == "SPELL_CAST_SUCCESS" and spellID == 72007 then
         RAY_Engine.sylvanasAlertActive = curTime + 6.0
