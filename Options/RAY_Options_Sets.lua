@@ -34,7 +34,7 @@ function RAY_Engine.InitSetsPage()
                 if data then data[key] = self:GetChecked() and true or false if RAY_Engine.CheckAllAuras then RAY_Engine.CheckAllAuras() end end
             end
         end)
-        SetTooltip(cb, tooltipText) currentY = currentY - 28 return cb
+        RAY_SetTooltip(cb, tooltipText) currentY = currentY - 28 return cb
     end
 
     local cbCombat = CreateModalCheckbox("Включать только в бою", "onlyInCombat", "Проверять это правило только во время ведения боя.")
@@ -54,7 +54,7 @@ function RAY_Engine.InitSetsPage()
             if data then data.seconds = self:GetText() or "45/5" if RAY_Engine.CheckAllAuras then RAY_Engine.CheckAllAuras() end end
         end
     end)
-    SetTooltip(icdEditBox, "Формат: ВремяКД/ЗаСколькоПоказать. Например, '45/10'.")
+    RAY_SetTooltip(icdEditBox, "Формат: ВремяКД/ЗаСколькоПоказать. Например, '45/10'.")
 
     -- Функция для открытия модалки и заполнения её данными
     local function OpenSetsModal(specNum, storageKey, idx, headerColorCode)
@@ -135,10 +135,10 @@ function RAY_Engine.InitSetsPage()
             local blockTopY = startY - 30 - (blockOffsetIndex * 155) -- Сильно уменьшили шаг Y, так как галочек на экране больше нет!
             local container = CreateFrame("Frame", "RAY_Spec" .. specNum .. "Block" .. storageKey, scrollChild) container:SetSize(360, 140) container:SetPoint("TOPLEFT", scrollChild, "TOPLEFT", hOffsetSub, blockTopY)
             
-            local editBox = CreateBlizzardEditBox(container, 0, -25, 220, "RAY_SInp"..specNum..""..storageKey) SetTooltip(editBox, tText)
+            local editBox = CreateBlizzardEditBox(container, 0, -25, 220, "RAY_SInp"..specNum..""..storageKey) RAY_SetTooltip(editBox, tText)
             local label = container:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall") label:SetPoint("BOTTOMLEFT", editBox, "TOPLEFT", 2, 6) label:SetText(headerColorCode .. labelTxt .. "|r")
             local btnOk = CreateFrame("Button", nil, container, "UIPanelButtonTemplate") btnOk:SetSize(45, 24) btnOk:SetPoint("LEFT", editBox, "RIGHT", 8, 0) btnOk:SetText(PASTEL_YELLOW.."ОК|r")
-    SetTooltip(btnOk, "Сохранить автоматизацию в этот спек.")
+    RAY_SetTooltip(btnOk, "Сохранить автоматизацию в этот спек.")
     
     local listFrame = CreateFrame("Frame", nil, container) 
     listFrame:SetSize(280, 75) 
