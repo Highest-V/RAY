@@ -10,7 +10,7 @@ function CreateBlizzardEditBox(parent, x, y, width, name)
 end
 
 -- Всплывающие подсказки с гарантированным выталкиванием на самый верхний слой
-function SetTooltip(widget, uText)
+function RAY_SetTooltip(widget, uText)
     widget:SetScript("OnEnter", function(self) 
         GameTooltip:SetOwner(self, "ANCHOR_RIGHT") 
         GameTooltip:SetText(uText, 1, 1, 1, nil, true) 
@@ -121,26 +121,26 @@ shortcutFrame:SetScript("OnEvent", function()
     local mainCbText = mainCb:CreateFontString(nil, "OVERLAY", "GameFontHighlight") mainCbText:SetPoint("LEFT", mainCb, "RIGHT", 5, 1) mainCbText:SetText("RAY-оповещения")
     mainCb:SetScript("OnShow", function(self) self:SetChecked(RAY_Config.enabled) end)
     mainCb:SetScript("OnClick", function(self) RAY_Config.enabled = self:GetChecked() and true or false if RAY_Engine.CheckAllAuras then RAY_Engine.CheckAllAuras() end end)
-    SetTooltip(mainCb, "Глобальное включение или выключение работы аддона.")
+    RAY_SetTooltip(mainCb, "Глобальное включение или выключение работы аддона.")
 
     local dragCb = CreateFrame("CheckButton", nil, optionsPanel, "InterfaceOptionsCheckButtonTemplate") dragCb:SetPoint("TOPLEFT", 16, -95)
     local dragCbText = dragCb:CreateFontString(nil, "OVERLAY", "GameFontNormal") dragCbText:SetPoint("LEFT", dragCb, "RIGHT", 5, 1) dragCbText:SetText(PASTEL_YELLOW .. "Move|r")
     dragCbGlobal = dragCb
     dragCb:SetScript("OnShow", function(self) self:SetChecked(RAY_Engine.frame and RAY_Engine.frame:IsMouseEnabled() or false) end)
     dragCb:SetScript("OnClick", function(self) ToggleRayMove(self:GetChecked()) end)
-    SetTooltip(dragCb, "Включает сетку перемещения главного и независимых окон аур. Перетаскивайте мышкой.")
+    RAY_SetTooltip(dragCb, "Включает сетку перемещения главного и независимых окон аур. Перетаскивайте мышкой.")
 
     local radarCb = CreateFrame("CheckButton", nil, optionsPanel, "InterfaceOptionsCheckButtonTemplate") radarCb:SetPoint("TOPLEFT", 16, -135)
     local radarCbText = radarCb:CreateFontString(nil, "OVERLAY", "GameFontNormal") radarCbText:SetPoint("LEFT", radarCb, "RIGHT", 5, 1) radarCbText:SetText(PASTEL_DEBUFF .. "RAY-Radar|r")
     radarCb:SetScript("OnShow", function(self) self:SetChecked(RAY_Config.radarEnabled) end) radarCb:SetScript("OnClick", function(self) RAY_Config.radarEnabled = self:GetChecked() end)
-    SetTooltip(radarCb, "Выводит в чат очищенную информацию о заклинаниях и их ID для удобства копирования.")
+    RAY_SetTooltip(radarCb, "Выводит в чат очищенную информацию о заклинаниях и их ID для удобства копирования.")
 
     -- КНОПКА "НАСТРОИТЬ РАДАР" И ДВУХУРОВНЕВЫЕ МОДАЛЬНЫЕ ОКНА
     local btnConfigRadar = CreateFrame("Button", "RAY_BtnConfigRadar", optionsPanel, "UIPanelButtonTemplate")
     btnConfigRadar:SetSize(135, 24)
     btnConfigRadar:SetPoint("LEFT", radarCbText, "RIGHT", 16, 0)
     btnConfigRadar:SetText(PASTEL_YELLOW .. "Настроить радар|r")
-    SetTooltip(btnConfigRadar, "Открывает фильтр РЛ-Радара для отслеживания важных способностей по журналу боя (тотемы, гимны, сейвы, сбития кастов) с выводом на экран. Функция в первую очередь полезна рейд-лидерам.")
+    RAY_SetTooltip(btnConfigRadar, "Открывает фильтр РЛ-Радара для отслеживания важных способностей по журналу боя (тотемы, гимны, сейвы, сбития кастов) с выводом на экран. Функция в первую очередь полезна рейд-лидерам.")
 
     -- МОДАЛЬНОЕ ОКНО 1: СПИСОК СПЕЛЛОВ РАДАРА
     local radarListModal = CreateFrame("Frame", "RAY_RadarListModal", InterfaceOptionsFrame)
@@ -177,7 +177,7 @@ shortcutFrame:SetScript("OnEvent", function()
     rBtnOk:SetSize(55, 24)
     rBtnOk:SetPoint("LEFT", rEditBox, "RIGHT", 8, 0)
     rBtnOk:SetText(PASTEL_YELLOW .. "ОК|r")
-    SetTooltip(rBtnOk, "Добавить способность в фильтр радара.")
+    RAY_SetTooltip(rBtnOk, "Добавить способность в фильтр радара.")
 
     local rScroll = CreateFrame("ScrollFrame", "RAY_RadarScrollFrame", radarListModal, "UIPanelScrollFrameTemplate")
     rScroll:SetPoint("TOPLEFT", 20, -108)
@@ -235,7 +235,7 @@ shortcutFrame:SetScript("OnEvent", function()
             RAY_Config.radarSpells[selectedRadarIdx].onlyInCombat = self:GetChecked() and true or false
         end
     end)
-    SetTooltip(rCbCombat, "Блокирует срабатывание вне боя (например, в Даларане).")
+    RAY_SetTooltip(rCbCombat, "Блокирует срабатывание вне боя (например, в Даларане).")
 
     -- 2. Чекбокс "Окно"
     local rCbWindow = CreateFrame("CheckButton", "RAY_RadarCbWindow", radarItemModal, "InterfaceOptionsCheckButtonTemplate")
@@ -250,7 +250,7 @@ shortcutFrame:SetScript("OnEvent", function()
             RAY_Config.radarSpells[selectedRadarIdx].isOwnWindow = self:GetChecked() and true or false
         end
     end)
-    SetTooltip(rCbWindow, "Выводит оповещение в отдельное окно, которое можно двигать через /raymove.")
+    RAY_SetTooltip(rCbWindow, "Выводит оповещение в отдельное окно, которое можно двигать через /raymove.")
 
     -- 3. Ползунок "Размер шрифта"
     local rSliderSize = CreateFrame("Slider", "RAY_RadarSliderSize", radarItemModal, "OptionsSliderTemplate")
@@ -268,7 +268,7 @@ shortcutFrame:SetScript("OnEvent", function()
             RAY_Config.radarSpells[selectedRadarIdx].customSize = val
         end
     end)
-    SetTooltip(rSliderSize, "Размер текста оповещения на экране.")
+    RAY_SetTooltip(rSliderSize, "Размер текста оповещения на экране.")
 
     -- 4. Выбор цвета
     local rColorBtn = CreateFrame("Button", nil, radarItemModal)
@@ -285,7 +285,7 @@ shortcutFrame:SetScript("OnEvent", function()
     rDefColorBtn:SetPoint("LEFT", rColorBtn, "RIGHT", 10, 0)
     rDefColorBtn:SetText("Цвет по умолчанию")
     rDefColorBtn:SetFrameLevel(radarItemModal:GetFrameLevel() + 5)
-    SetTooltip(rColorBtn, "Выбрать цвет текста оповещения.")
+    RAY_SetTooltip(rColorBtn, "Выбрать цвет текста оповещения.")
 
     -- 5. Длительность показа (сек)
     local rDurLabel = radarItemModal:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
@@ -301,7 +301,7 @@ shortcutFrame:SetScript("OnEvent", function()
             RAY_Config.radarSpells[selectedRadarIdx].duration = val
         end
     end)
-    SetTooltip(rDurBox, "Сколько секунд предупреждение будет висеть на экране после применения способности.")
+    RAY_SetTooltip(rDurBox, "Сколько секунд предупреждение будет висеть на экране после применения способности.")
 
 
     local function RefreshRadarList()
@@ -361,6 +361,8 @@ shortcutFrame:SetScript("OnEvent", function()
     rColorBtn:SetScript("OnClick", function()
         if not selectedRadarIdx or not RAY_Config.radarSpells[selectedRadarIdx] then return end
         local cur = RAY_Config.radarSpells[selectedRadarIdx].color or { r = 0.5, g = 0.95, b = 0.8 }
+        ColorPickerFrame.opacityFunc = nil
+        ColorPickerFrame.cancelFunc = nil
         ColorPickerFrame.func = function()
             local r, g, b = ColorPickerFrame:GetColorRGB()
             rColorTex:SetVertexColor(r, g, b)
@@ -436,13 +438,13 @@ shortcutFrame:SetScript("OnEvent", function()
     local hunterCb = CreateFrame("CheckButton", nil, optionsPanel, "InterfaceOptionsCheckButtonTemplate") hunterCb:SetPoint("TOPLEFT", 16, -175)
     local hunterCbText = hunterCb:CreateFontString(nil, "OVERLAY", "GameFontNormal") hunterCbText:SetPoint("LEFT", hunterCb, "RIGHT", 5, 1) hunterCbText:SetText(PASTEL_BUFF .. "Box Detector|r")
     hunterCb:SetScript("OnShow", function(self) self:SetChecked(RAY_Config.boxHunterEnabled) end) hunterCb:SetScript("OnClick", function(self) RAY_Config.boxHunterEnabled = self:GetChecked() RAY_Engine.sylvanasAlertActive = false if RAY_Engine.CheckAllAuras then RAY_Engine.CheckAllAuras() end end)
-    SetTooltip(hunterCb, "Автоматическое обнаружение активации Музыкальной Шкатулки Сильваны в рейде.")
+    RAY_SetTooltip(hunterCb, "Автоматическое обнаружение активации Музыкальной Шкатулки Сильваны в рейде.")
 
     local cpCb = CreateFrame("CheckButton", nil, optionsPanel, "InterfaceOptionsCheckButtonTemplate") cpCb:SetPoint("TOPLEFT", 16, -215)
     local cpCbText = cpCb:CreateFontString(nil, "OVERLAY", "GameFontNormal") cpCbText:SetPoint("LEFT", cpCb, "RIGHT", 5, 1) cpCbText:SetText("|cffFFD369Отслеживать Комбо-Поинты (КП)|r")
     cpCb:SetScript("OnShow", function(self) self:SetChecked(RAY_Config.comboTrackerEnabled == true) end)
     cpCb:SetScript("OnClick", function(self) RAY_Config.comboTrackerEnabled = self:GetChecked() and true or false if RAY_Engine.CheckAllAuras then RAY_Engine.CheckAllAuras() end end)
-    SetTooltip(cpCb, "Выводит яркое предупреждение о накоплении Комбо-Поинтов на вашей текущей цели.")
+    RAY_SetTooltip(cpCb, "Выводит яркое предупреждение о накоплении Комбо-Поинтов на вашей текущей цели.")
 
     local cpSlider = CreateFrame("Slider", "RAY_MainComboSlider", optionsPanel, "OptionsSliderTemplate") cpSlider:SetSize(180, 16) cpSlider:SetPoint("TOPLEFT", 40, -255) cpSlider:SetMinMaxValues(1, 5) cpSlider:SetValueStep(1)
     local cpSliderText = cpSlider:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall") cpSliderText:SetPoint("BOTTOMLEFT", cpSlider, "TOPLEFT", 0, 4)
@@ -454,7 +456,7 @@ shortcutFrame:SetScript("OnEvent", function()
         if not RAY_Config.comboTrackerLimit then RAY_Config.comboTrackerLimit = 5 end
         self:SetValue(RAY_Config.comboTrackerLimit) cpSliderText:SetText("Целевой порог КП: " .. RAY_Config.comboTrackerLimit)
     end)
-    SetTooltip(cpSlider, "Задает количество КП, при достижении которого начнется оповещение (например, 5 КП).")
+    RAY_SetTooltip(cpSlider, "Задает количество КП, при достижении которого начнется оповещение (например, 5 КП).")
 
     local btnClear = CreateFrame("Button", nil, optionsPanel, "UIPanelButtonTemplate")
     btnClear:SetSize(140, 30)
@@ -464,7 +466,7 @@ shortcutFrame:SetScript("OnEvent", function()
         RAY_Config = nil 
         ReloadUI() 
     end)
-    SetTooltip(btnClear, "Полная очистка базы данных SavedVariables и перезагрузка интерфейса.")
+    RAY_SetTooltip(btnClear, "Полная очистка базы данных SavedVariables и перезагрузка интерфейса.")
     
     InterfaceOptions_AddCategory(optionsPanel)
     
