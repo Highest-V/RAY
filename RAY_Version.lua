@@ -2,7 +2,7 @@
 --  RAY Version Check (Private)
 -- ============================================================
 
-local RAY_addonVersion  = GetAddOnMetadata("RAY", "Version") or "8.1"
+local RAY_addonVersion  = ""
 local RAY_requestPrefix = "RAY_HV_REQ"
 local RAY_replyPrefix   = "RAY_HV_ANS"
 

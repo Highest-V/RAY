@@ -56,7 +56,8 @@ function RAY_Engine.GetEnchantCooldownOrStatus(enchantName)
     local offRem  = (hasOff and offExp and offExp > 0) and (offExp / 1000) or 0
 
     local mainMatch = false
-    local cacheMain = RAY_Engine.cachedEnchantStatus
+    local cacheMain = RAY_Engine.cachedEnchantStatus[16]
+
     if hasMain and mainRem > 0 and cacheMain then
         for j = 1, #cacheMain do
             local line = cacheMain[j]:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")
@@ -68,7 +69,7 @@ function RAY_Engine.GetEnchantCooldownOrStatus(enchantName)
     end
 
     local offMatch = false
-    local cacheOff = RAY_Engine.cachedEnchantStatus
+    local cacheOff = RAY_Engine.cachedEnchantStatus[17]
     if hasOff and offRem > 0 and cacheOff then
         for j = 1, #cacheOff do
             local line = cacheOff[j]:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")
