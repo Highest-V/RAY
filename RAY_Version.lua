@@ -2,7 +2,7 @@
 --  RAY Version Check (Private)
 -- ============================================================
 
-local RAY_addonVersion  = ""
+local RAY_addonVersion  = "8.2"
 local RAY_requestPrefix = "RAY_HV_REQ"
 local RAY_replyPrefix   = "RAY_HV_ANS"
 
