@@ -146,37 +146,47 @@ function RAY_Engine.ProcessBuffs(activeProfile, inCombat, currentZone, curTime, 
                             end
                         end
                     else
+                        local stackKey = target .. "_" .. buff.name
                         if not isActive then
+                            RAY_Engine.lastAuraStacks[stackKey] = 0
+                            RAY_Engine.auraStackDirection[stackKey] = nil
                             needAlert = true
                             if limitStacks > 0 then customReason = " (0/" .. limitStacks .. prefix .. ")" end
                         else
-                            if limitStacks > 0 and stacks < limitStacks then
-                                if buff.isStackProgress then
-                                    needAlert = true 
-                                    customReason = " (" .. stacks .. "/" .. limitStacks .. prefix .. ")"
-                                else
-                                    needAlert = false
-                                end
-                            elseif isAtMaxCap then
-                                if buff.isHideCap then
-                                    needAlert = false
-                                else
-                                    needAlert = true 
-                                    local displayTime = ""
-                                    if userAlertTime > 0 and timeLeft <= userAlertTime and not isShapeshift then
-                                        displayTime = " " .. math.ceil(timeLeft) .. " сек"
+                            local prevStacks = RAY_Engine.lastAuraStacks[stackKey]
+                            if prevStacks and stacks ~= prevStacks then
+                                RAY_Engine.auraStackDirection[stackKey] = (stacks > prevStacks) and "up" or "down"
+                            end
+                            RAY_Engine.lastAuraStacks[stackKey] = stacks
+                            local dir = RAY_Engine.auraStackDirection[stackKey]
+
+                            local displayTime = (userAlertTime > 0 and timeLeft > 0 and timeLeft <= userAlertTime) and (" " .. math.ceil(timeLeft) .. " сек") or ""
+                            -- 1. Независимый модуль стаков
+                            if limitStacks > 0 then
+                                if stacks < limitStacks then
+                                    if buff.isStackProgress then
+                                        needAlert = true
+                                        customReason = " (" .. stacks .. "/" .. limitStacks .. prefix .. ")"
                                     end
-                                    customReason = (buff.isStackProgress and limitStacks > 0) and (" (" .. stacks .. "/" .. limitStacks .. prefix .. ")" .. displayTime) or displayTime
-                                end
-                            elseif userAlertTime > 0 and not isShapeshift then
-                                if timeLeft <= userAlertTime then
-                                    needAlert = true
-                                    customReason = " " .. math.ceil(timeLeft) .. " сек"
                                 else
-                                    needAlert = false
+                                    if buff.isHideCap then
+                                        if buff.isStackProgress and dir == "down" and stacks == limitStacks then
+                                            needAlert = true
+                                            customReason = " (" .. stacks .. "/" .. limitStacks .. prefix .. ")"
+                                        end
+                                    else
+                                        needAlert = true
+                                        if buff.isStackProgress then
+                                            customReason = " (" .. stacks .. "/" .. limitStacks .. prefix .. ")"
+                                        end
+                                    end
                                 end
-                            else
-                                needAlert = false
+                            end
+
+                            -- 2. Независимый модуль таймера (работает сам по себе)
+                            if not isShapeshift and userAlertTime > 0 and timeLeft > 0 and timeLeft <= userAlertTime then
+                                needAlert = true
+                                customReason = customReason .. " " .. math.ceil(timeLeft) .. " сек"
                             end
                         end
                     end

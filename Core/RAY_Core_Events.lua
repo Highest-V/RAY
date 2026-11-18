@@ -5,6 +5,9 @@ engineEvents:RegisterEvent("UNIT_AURA")
 engineEvents:RegisterEvent("UNIT_INVENTORY_CHANGED")
 engineEvents:RegisterEvent("PLAYER_EQUIPMENT_CHANGED")
 engineEvents:RegisterEvent("PLAYER_TARGET_CHANGED")
+engineEvents:RegisterEvent("UNIT_SPELLCAST_SUCCEEDED")
+engineEvents:RegisterEvent("PLAYER_FOCUS_CHANGED")
+engineEvents:RegisterEvent("UNIT_PET")
 engineEvents:RegisterEvent("PLAYER_TOTEM_UPDATE")
 engineEvents:RegisterEvent("UNIT_COMBO_POINTS")
 engineEvents:RegisterEvent("PLAYER_REGEN_DISABLED")
@@ -12,8 +15,29 @@ engineEvents:RegisterEvent("PLAYER_REGEN_ENABLED")
 engineEvents:RegisterEvent("ACTIVE_TALENT_GROUP_CHANGED")
 engineEvents:RegisterEvent("SPELL_UPDATE_COOLDOWN")
 
-engineEvents:SetScript("OnEvent", function(self, event, arg1, ...)
-    if event == "ADDON_LOADED" and arg1 == RAY_addonName then
+engineEvents:SetScript("OnEvent", function(self, event, arg1, arg2, ...)
+    if event == "UNIT_SPELLCAST_SUCCEEDED" and (arg1 == "player" or arg1 == "pet") and arg2 then
+        local castClean = RAY_Engine.CleanSpellName(arg2)
+        local currentSpec = GetActiveTalentGroup() or 1
+        local spells = RAY_Config and RAY_Config.specSettings and RAY_Config.specSettings[currentSpec] and RAY_Config.specSettings[currentSpec].spells
+        if spells then
+            local inCombat = UnitAffectingCombat("player") and true or false
+            local currentZone = RAY_Engine.GetCurrentZoneType()
+            for i = 1, #spells do
+                local sd = spells[i]
+                local isCastTrigger = sd and (sd.isCooldown or sd.isSummonObject or sd.isWeaponText)
+                if isCastTrigger and sd.chatMsg and sd.chatMsg ~= "" and RAY_Engine.CheckSubRules(sd, inCombat, currentZone) then
+                    for cond in string.gmatch(sd.name, "[^|/]+") do
+                        local cleanCond = RAY_Engine.CleanSpellName(cond:match("^%s*(.-)%s*$"))
+                        if cleanCond == castClean or GetSpellInfo(tonumber(cleanCond) or 0) == arg2 then
+                            SendChatMessage(sd.chatMsg, sd.chatChannel or "SAY")
+                            break
+                        end
+                    end
+                end
+            end
+        end
+    elseif event == "ADDON_LOADED" and arg1 == RAY_addonName then
         if not RAY_Config then RAY_Config = CopyTable(RAY_defaultSettings) end
         if RAY_Engine.frame and RAY_Config.framePos then
             RAY_Engine.frame:ClearAllPoints()
