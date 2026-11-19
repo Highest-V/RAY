@@ -46,6 +46,10 @@ combatLogFrame:SetScript("OnEvent", function(self, event, ...)
             local cleanLogSpell = RAY_Engine.CleanSpellName(spellName)
             local radarData = RAY_Engine.radarLookup[cleanLogSpell] or RAY_Engine.radarLookup[tostring(spellID)]
             if radarData then
+                local numRaid = GetNumRaidMembers and GetNumRaidMembers() or 0
+                if numRaid == 0 then return end
+                local isRaidMember = sourceFlags and bit.band(sourceFlags, bit.bor(COMBATLOG_OBJECT_AFFILIATION_MINE, COMBATLOG_OBJECT_AFFILIATION_RAID)) > 0
+                if not isRaidMember then return end
                 local inCombat = UnitAffectingCombat("player")
                 if not radarData.onlyInCombat or inCombat then
                     local dur = tonumber(radarData.duration) or 5
