@@ -1,6 +1,31 @@
 local combatLogFrame = CreateFrame("Frame")
 combatLogFrame:RegisterEvent("COMBAT_LOG_EVENT_UNFILTERED")
+combatLogFrame:RegisterEvent("UNIT_SPELLCAST_SUCCEEDED")
 combatLogFrame:SetScript("OnEvent", function(self, event, ...)
+    if event == "UNIT_SPELLCAST_SUCCEEDED" then
+        local unit, spellName = ...
+        if RAY_Config and RAY_Config.boxHunterEnabled and spellName == "Плач высокорожденных" then
+            local cur = GetTime()
+            if RAY_Engine.lastBoxTime and (cur - RAY_Engine.lastBoxTime) < 2.0 then return end
+            local inRaid = UnitInRaid and UnitInRaid(unit) or false
+            local inParty = UnitInParty and UnitInParty(unit) or false
+            if inRaid or inParty or unit == "player" then
+                RAY_Engine.lastBoxTime = cur
+                local joker = UnitName(unit) or "Кто-то в рейде"
+                RAY_Engine.sylvanasAlertActive = cur + 15.0
+                RAY_Engine.sylvanasAlertPlayer = joker
+                DEFAULT_CHAT_FRAME:AddMessage("|cff4ECCA3[RAY Детектор]:|r Обнаружена шкатулка Сильваны! Шутник: |cffFF7676" .. joker .. "|r")
+                local msgText = "[RAY Детектор]: Игрок " .. joker .. " запустил Шкатулку Сильваны!"
+                local numRaid = GetNumRaidMembers and GetNumRaidMembers() or 0
+                local numParty = GetNumPartyMembers and GetNumPartyMembers() or 0
+                if numRaid > 0 then SendChatMessage(msgText, "RAID") elseif numParty > 0 then SendChatMessage(msgText, "PARTY") end
+                if IsInGuild() then SendChatMessage(msgText, "OFFICER") end
+                RAY_Engine.Engine_lastDbgHash = ""
+                RAY_Engine.CheckAllAuras()
+            end
+        end
+        return
+    end
     local timestamp, subEvent, sourceGUID, sourceName, sourceFlags, destGUID, destName, destFlags, spellID, spellName = ...
     local playerGUID = UnitGUID("player")
     local curTime = GetTime()

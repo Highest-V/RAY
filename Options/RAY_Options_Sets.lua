@@ -42,7 +42,6 @@ function RAY_Engine.InitSetsPage()
     local cbParty  = CreateModalCheckbox("В подземельях", "zoneParty", "Активировать проверку правила в подземельях на 5 человек.")
     local cbRaid   = CreateModalCheckbox("В рейдовых зонах", "zoneRaid", "Активировать проверку правила в рейдовых зонах.")
     local cbInvert = CreateModalCheckbox("Инвертировать логику", "invert", "Оповещать, если этот бафф/стойка НАХОДИТСЯ на вас.")
-    local cbPet    = CreateModalCheckbox("Это питомец", "isPetTracker", "Аддон будет напоминать о призыве, если питомца нет рядом.")
 
     -- Дополнительное поле для КД тринкетов (seconds) в модальном окне
     local icdEditLabel = modal:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall") icdEditLabel:SetPoint("TOPLEFT", 24, currentY - 10) icdEditLabel:SetText("Время КД / За сколько показать:")
@@ -69,10 +68,8 @@ function RAY_Engine.InitSetsPage()
         cbParty:SetChecked(data.zoneParty == true)
         cbRaid:SetChecked(data.zoneRaid == true)
         
-        if storageKey == "buffs" then cbInvert:Show() cbPet:Show() else cbInvert:Hide() cbPet:Hide() end
-        if cbInvert:IsShown() then cbInvert:SetChecked(data.invert == true) end
-        if cbPet:IsShown() then cbPet:SetChecked(data.isPetTracker == true) end
-        
+        if storageKey == "buffs" then cbInvert:Show() else cbInvert:Hide() end
+        if cbInvert:IsShown() then cbInvert:SetChecked(data.invert == true) end        
         if storageKey == "icds" then icdEditLabel:Show() icdEditBox:Show() icdEditBox:SetText(data.seconds or "45/5") else icdEditLabel:Hide() icdEditBox:Hide() end
         
         modal:Show()
@@ -139,7 +136,26 @@ function RAY_Engine.InitSetsPage()
             local label = container:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall") label:SetPoint("BOTTOMLEFT", editBox, "TOPLEFT", 2, 6) label:SetText(headerColorCode .. labelTxt .. "|r")
             local btnOk = CreateFrame("Button", nil, container, "UIPanelButtonTemplate") btnOk:SetSize(45, 24) btnOk:SetPoint("LEFT", editBox, "RIGHT", 8, 0) btnOk:SetText(PASTEL_YELLOW.."ОК|r")
     RAY_SetTooltip(btnOk, "Сохранить автоматизацию в этот спек.")
-    
+
+    if storageKey == "buffs" then
+        local petCb = CreateFrame("CheckButton", "RAY_Spec" .. specNum .. "PetCheck", container, "InterfaceOptionsCheckButtonTemplate")
+        petCb:SetSize(24, 24)
+        petCb:SetPoint("LEFT", btnOk, "RIGHT", 10, 0)
+        local petCbText = petCb:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        petCbText:SetPoint("LEFT", petCb, "RIGHT", 2, 1)
+        petCbText:SetText(headerColorCode .. "Напомнить про питомца|r")
+        petCb:SetScript("OnShow", function(self)
+            local sData = RAY_Config and RAY_Config.specSettings and RAY_Config.specSettings[specNum]
+            self:SetChecked(sData and sData.remindPet == true)
+        end)
+        petCb:SetScript("OnClick", function(self)
+            if not RAY_Config.specSettings then RAY_Config.specSettings = {} end
+            if not RAY_Config.specSettings[specNum] then RAY_Config.specSettings[specNum] = { spells = {}, sets = {}, buffs = {}, icds = {} } end
+            RAY_Config.specSettings[specNum].remindPet = self:GetChecked() and true or false
+            if RAY_Engine.CheckAllAuras then RAY_Engine.CheckAllAuras() end
+        end)
+        RAY_SetTooltip(petCb, "Универсальное напоминание: выводит надпись на экран, если у вас не призван питомец (не срабатывает верхом на маунте).")
+    end    
     local listFrame = CreateFrame("Frame", nil, container) 
     listFrame:SetSize(280, 75) 
     listFrame:SetPoint("TOPLEFT", editBox, "TOPLEFT", 2, -35)

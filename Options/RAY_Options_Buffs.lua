@@ -39,7 +39,7 @@ function RAY_Engine.InitBuffsPage()
     mClose:SetScript("OnClick", function() modal:Hide() end)
 
     local colorBtn = CreateFrame("Button", nil, modal)
-    local editTime, sliderStacks, specSlider, cbCombat, cbWorld, cbParty, cbRaid, cbCooldown, cbProc, cbWeapon, cbProgress, cbHideCap, cbExternal, cbSummon, cbOwnWindow, editChatMsg, chatDropDown, cbHideScreen
+    local editTime, sliderStacks, specSlider, cbCombat, cbWorld, cbParty, cbRaid, cbCooldown, cbCheckBuffCd, cbProc, cbWeapon, cbProgress, cbHideCap, cbExternal, cbSummon, cbOwnWindow, editChatMsg, chatDropDown, cbHideScreen
     
     local dropDown = CreateFrame("Frame", "RAY_Buffs_Target_DropDown", modal, "UIDropDownMenuTemplate") 
     dropDown:SetPoint("TOPLEFT", 6, -55) 
@@ -47,8 +47,7 @@ function RAY_Engine.InitBuffsPage()
     dropDown:SetFrameStrata("TOOLTIP")
     dropDown:SetFrameLevel(modal:GetFrameLevel() + 10)
 
-    local tempConfig = { onlyInCombat = false, zoneWorld = false, zoneParty = false, zoneRaid = false, target = "player", isCooldown = false, isProc = false, isWeaponText = false, isStackProgress = false, isHideCap = false, isExternalOnly = false, isOwnWindow = false, isSummonObject = false, chatMsg = "", chatChannel = "SAY", hideScreenAlert = false, customSize = 24, color = { r = 0.5, g = 0.95, b = 0.8 } }
-    local function GetActiveIndex() return _G[globalSelectedIndexRef] end
+    local tempConfig = { onlyInCombat = false, zoneWorld = false, zoneParty = false, zoneRaid = false, target = "player", isCooldown = false, checkBuffOnCd = false, isProc = false, isWeaponText = false, isStackProgress = false, isHideCap = false, isExternalOnly = false, isOwnWindow = false, isSummonObject = false, chatMsg = "", chatChannel = "SAY", hideScreenAlert = false, customSize = 24, color = { r = 0.5, g = 0.95, b = 0.8 } }    local function GetActiveIndex() return _G[globalSelectedIndexRef] end
     local function SetActiveIndex(val) _G[globalSelectedIndexRef] = val end
 
     local function GetTargetDisplayText(tVal)
@@ -109,6 +108,31 @@ function RAY_Engine.InitBuffsPage()
     cbParty    = AddVerticalCheckbox("Отслеживать в подземельях (5 тел)", "Включает отслеживание в инстах на 5 человек.", "zoneParty")
     cbRaid     = AddVerticalCheckbox("Отслеживать в рейдовых зонах", "Включает отслеживание в рейдах (10/25 тел).", "zoneRaid")
     cbCooldown = AddVerticalCheckbox("Отслеживать готовность КД", "Триггер готовности: Оповещает, когда способность ГОТОВА к прожатию.", "isCooldown")
+
+    cbCheckBuffCd = CreateFrame("CheckButton", "RAY_BuffsCheckBuffCd", modal, "InterfaceOptionsCheckButtonTemplate")
+    cbCheckBuffCd:SetPoint("LEFT", cbCooldown, "RIGHT", 215, 0)
+    cbCheckBuffCd:SetScale(0.95)
+    local cbCdSubText = cbCheckBuffCd:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    cbCdSubText:SetPoint("LEFT", cbCheckBuffCd, "RIGHT", 3, 1)
+    cbCdSubText:SetText(PASTEL_YELLOW .. "Учитывать бафф|r")
+    cbCheckBuffCd:SetScript("OnClick", function(self)
+        local idx = GetActiveIndex()
+        local val = self:GetChecked() and true or false
+        if idx then
+            local currentSpec = GetActiveTalentGroup() or 1
+            if RAY_Config.specSettings[currentSpec].spells[idx] then
+                RAY_Config.specSettings[currentSpec].spells[idx].checkBuffOnCd = val
+                if RAY_Engine.CheckAllAuras then RAY_Engine.CheckAllAuras() end
+            end
+        else
+            tempConfig.checkBuffOnCd = val
+        end
+    end)
+    RAY_SetTooltip(cbCheckBuffCd, "Не выводит напоминание о готовности КД, пока бафф или дебафф от этой способности всё ещё висит на цели/игроке.")
+
+    cbCooldown:HookScript("OnClick", function(self)
+        if self:GetChecked() then cbCheckBuffCd:Show() else cbCheckBuffCd:Hide() end
+    end)
     cbProc     = AddVerticalCheckbox("Это прок (активен до траты)", "Триггер прока: Светится, пока бафф висит на вас, исчезает при спаде.", "isProc")
     cbWeapon   = AddVerticalCheckbox("Чары инженерии / оружия", "Специальный скан на наличие чарок на оружии или перчатках.", "isWeaponText")
     cbProgress = AddVerticalCheckbox("Показывать набор стаков", "Выводит текущее количество стаков относительно ползунка лимита (например, '2/4 ст').", "isStackProgress")
@@ -368,6 +392,8 @@ local function LocalUpdateLists()
                         cbParty:SetChecked(data.zoneParty == true)
                         cbRaid:SetChecked(data.zoneRaid == true)
                         cbCooldown:SetChecked(data.isCooldown == true)
+                        cbCheckBuffCd:SetChecked(data.checkBuffOnCd == true)
+                        if data.isCooldown then cbCheckBuffCd:Show() else cbCheckBuffCd:Hide() end
                         cbProc:SetChecked(data.isProc == true)
                         cbWeapon:SetChecked(data.isWeaponText == true)
                         cbProgress:SetChecked(data.isStackProgress == true)
@@ -486,6 +512,7 @@ btnOk:SetScript("OnClick", function()
         zoneParty = true,
         zoneRaid = true,
         isCooldown = false,
+        checkBuffOnCd = false,
         isProc = false,
         isWeaponText = false,
         isStackProgress = false,
@@ -521,6 +548,8 @@ btnOk:SetScript("OnClick", function()
     cbParty:SetChecked(item.zoneParty == true)
     cbRaid:SetChecked(item.zoneRaid == true)
     cbCooldown:SetChecked(item.isCooldown == true)
+    cbCheckBuffCd:SetChecked(false)
+    cbCheckBuffCd:Hide()
     cbProc:SetChecked(item.isProc == true)
     cbWeapon:SetChecked(item.isWeaponText == true)
     cbProgress:SetChecked(item.isStackProgress == true)

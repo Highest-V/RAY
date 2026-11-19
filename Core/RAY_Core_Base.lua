@@ -199,7 +199,7 @@ RAY_Engine.CheckAllAuras = function()
 
     if RAY_Engine.sylvanasAlertActive and RAY_Config.boxHunterEnabled then
         if curTime <= RAY_Engine.sylvanasAlertActive then
-            RAY_Engine.uniqueAlerts["|cffFF5555[RAY Детектор]: Шкатулку завел!|r"] = true
+            RAY_Engine.uniqueAlerts["|cffFF5555[RAY Детектор]: Шкатулку завел " .. (RAY_Engine.sylvanasAlertPlayer or "кто-то") .. "!|r"] = true
         else RAY_Engine.sylvanasAlertActive = false end
     end
 

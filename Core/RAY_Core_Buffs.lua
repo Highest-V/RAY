@@ -102,6 +102,12 @@ function RAY_Engine.ProcessBuffs(activeProfile, inCombat, currentZone, curTime, 
         else RAY_Engine.activeSummonAlerts[key] = nil end
     end
 
+    if activeProfile.remindPet then
+        if not IsMounted() and (not UnitExists("pet") or UnitIsDead("pet")) then
+            RAY_Engine.uniqueAlerts["|cffA8FF35RAY: Призовите питомца!|r"] = true
+        end
+    end
+
     if activeProfile.buffs then
         for i = 1, #activeProfile.buffs do
             local buff = activeProfile.buffs[i]
@@ -114,7 +120,7 @@ function RAY_Engine.ProcessBuffs(activeProfile, inCombat, currentZone, curTime, 
                 local customReason = ""
                 
                 if buff.isPetTracker then
-                    if UnitExists("pet") and not UnitIsDead("pet") then needAlert = false else needAlert = true end
+                    if (UnitExists("pet") and not UnitIsDead("pet")) or IsMounted() then needAlert = false else needAlert = true end
                 else
                     local target = buff.target or "player"
                     local isActive, stacks, timeLeft = RAY_Engine.CheckAuraGroupDirect(target, buff.name)

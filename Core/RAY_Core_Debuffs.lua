@@ -76,16 +76,22 @@ function RAY_Engine.ProcessDebuffs(activeProfile, inCombat, currentZone, curTime
                             end
                         end
                     elseif spellData.isCooldown then
-                        local start, duration = RAY_GetUniversalSpellCooldown(spellData.name)
-                        if start ~= nil then
-                            if start > 0 and duration > 1.5 then
-                                local rem = (start + duration) - curTime
-                                if userAlertTime > 0 and rem > 0 and rem <= userAlertTime then
+                        local isBlockedByAura = false
+                        if spellData.checkBuffOnCd and RAY_Engine.CheckAuraGroupDirect then
+                            isBlockedByAura = RAY_Engine.CheckAuraGroupDirect(target, spellData.name)
+                        end
+                        if not isBlockedByAura then
+                            local start, duration = RAY_GetUniversalSpellCooldown(spellData.name)
+                            if start ~= nil then
+                                if start > 0 and duration > 1.5 then
+                                    local rem = (start + duration) - curTime
+                                    if userAlertTime > 0 and rem > 0 and rem <= userAlertTime then
+                                        needAlert = true
+                                        customReason = " " .. math.ceil(rem) .. " сек"
+                                    end
+                                else
                                     needAlert = true
-                                    customReason = " " .. math.ceil(rem) .. " сек"
                                 end
-                            else
-                                needAlert = true
                             end
                         end
                     else
