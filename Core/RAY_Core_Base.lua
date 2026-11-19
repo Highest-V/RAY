@@ -60,6 +60,16 @@ end
 
 function RAY_Engine.GetDefaultColor() return { r = 0.5, g = 0.95, b = 0.8 } end
 
+RAY_Engine.lastGlobalChatTime = 0
+function RAY_Engine.SafeSendChat(msg, channel)
+    if not msg or msg == "" then return end
+    local now = GetTime()
+    if (now - RAY_Engine.lastGlobalChatTime) < 2.0 then
+        return
+    end
+    RAY_Engine.lastGlobalChatTime = now
+    SendChatMessage(msg, channel or "SAY")
+end
 function RAY_Engine.CleanSpellName(name)
     if not name then return "" end
     if RAY_Engine.spellsCleanNameCache[name] then return RAY_Engine.spellsCleanNameCache[name] end
