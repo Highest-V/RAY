@@ -2,12 +2,43 @@ local shortcutFrame = CreateFrame("Frame")
 isSelfUpdating = false
 dragCbGlobal = nil
 
-function CreateBlizzardEditBox(parent, x, y, width, name)
+function CreateBlizzardEditBox(parent, x, y, width, name, placeholderText)
     local eb = CreateFrame("EditBox", name, parent, "InputBoxTemplate")
     eb:SetSize(width, 24) eb:SetPoint("TOPLEFT", parent, "TOPLEFT", x, y) eb:SetAutoFocus(false)
     eb:SetFontObject("ChatFontNormal") eb:SetTextInsets(4, 4, 0, 0)
+
+    if placeholderText then
+        local ph = eb:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+        ph:SetPoint("LEFT", eb, "LEFT", 6, 0)
+        ph:SetText(placeholderText)
+        eb.placeholder = ph
+
+        local function UpdatePlaceholder()
+            if eb:GetText() == "" and not eb:HasFocus() then
+                ph:Show()
+            else
+                ph:Hide()
+            end
+        end
+
+        eb:HookScript("OnEditFocusGained", function() ph:Hide() end)
+        eb:HookScript("OnEditFocusLost", UpdatePlaceholder)
+        eb:HookScript("OnTextChanged", UpdatePlaceholder)
+        eb:HookScript("OnShow", UpdatePlaceholder)
+    end
+
     return eb
 end
+
+-- Перехват Shift-клика по заклинаниям и предметам (линковка в активное поле RAY)
+hooksecurefunc("ChatEdit_InsertLink", function(text)
+    if not text then return end
+    local focus = GetCurrentKeyBoardFocus()
+    if focus and focus:GetName() and focus:GetName():find("^RAY_") then
+        local cleanName = text:match("%[(.-)%]") or text:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")
+        focus:Insert(cleanName)
+    end
+end)
 
 -- Всплывающие подсказки с гарантированным выталкиванием на самый верхний слой
 function RAY_SetTooltip(widget, uText)
@@ -172,7 +203,7 @@ shortcutFrame:SetScript("OnEvent", function()
     rEditLabel:SetPoint("TOPLEFT", 22, -50)
     rEditLabel:SetText("Название способности или ID:")
 
-    local rEditBox = CreateBlizzardEditBox(radarListModal, 22, -68, 255, "RAY_RadarInputBox")
+    local rEditBox = CreateBlizzardEditBox(radarListModal, 22, -68, 255, "RAY_RadarInputBox", "Имя, ID или Shift+ЛКМ по спеллу...")
     local rBtnOk = CreateFrame("Button", nil, radarListModal, "UIPanelButtonTemplate")
     rBtnOk:SetSize(55, 24)
     rBtnOk:SetPoint("LEFT", rEditBox, "RIGHT", 8, 0)
@@ -206,25 +237,50 @@ shortcutFrame:SetScript("OnEvent", function()
     radarItemModal:SetFrameLevel(radarListModal:GetFrameLevel() + 10)
     radarItemModal:Hide()
 
-    local rItemTitle = radarItemModal:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-    rItemTitle:SetPoint("TOPLEFT", 22, -18)
+    local selectedRadarIdx = nil
+    local radarListButtons = {}
+
+    local rItemTitleBtn = CreateFrame("Button", nil, radarItemModal)
+    rItemTitleBtn:SetPoint("TOPLEFT", 22, -16)
+    rItemTitleBtn:SetSize(270, 22)
+    rItemTitleBtn:SetFrameLevel(radarItemModal:GetFrameLevel() + 5)
+
+    local rItemTitle = rItemTitleBtn:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+    rItemTitle:SetPoint("LEFT", 0, 0)
+    rItemTitle:SetJustifyH("LEFT")
+
+    local rHintText = radarItemModal:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+    rHintText:SetPoint("TOPLEFT", 22, -38)
+    rHintText:SetText("2х ЛКМ по названию — изменить")
+
+    local rRenameBox = CreateBlizzardEditBox(radarItemModal, 22, -16, 260, "RAY_RadarRenameBox")
+    rRenameBox:SetFrameLevel(radarItemModal:GetFrameLevel() + 6)
+    rRenameBox:Hide()
+
+    rItemTitleBtn:SetScript("OnDoubleClick", function()
+        if not selectedRadarIdx or not RAY_Config.radarSpells[selectedRadarIdx] then return end
+        rItemTitleBtn:Hide()
+        rRenameBox:SetText(RAY_Config.radarSpells[selectedRadarIdx].name or "")
+        rRenameBox:Show()
+        rRenameBox:SetFocus()
+        rRenameBox:HighlightText()
+    end)
 
     local rItemClose = CreateFrame("Button", nil, radarItemModal, "UIPanelCloseButton")
     rItemClose:SetPoint("TOPRIGHT", -6, -6)
     rItemClose:SetFrameLevel(radarItemModal:GetFrameLevel() + 5)
-    rItemClose:SetScript("OnClick", function() radarItemModal:Hide() end)
+    rItemClose:SetScript("OnClick", function() rRenameBox:Hide() rItemTitleBtn:Show() radarItemModal:Hide() end)
 
     rListClose:SetScript("OnClick", function()
+        rRenameBox:Hide()
+        rItemTitleBtn:Show()
         radarItemModal:Hide()
         radarListModal:Hide()
     end)
 
-    local selectedRadarIdx = nil
-    local radarListButtons = {}
-
-    -- 1. Чекбокс "Включать только в бою"
+    -- 1. Чекбокс "Включать только в бою" (сдвинуто ниже на 16px)
     local rCbCombat = CreateFrame("CheckButton", "RAY_RadarCbCombat", radarItemModal, "InterfaceOptionsCheckButtonTemplate")
-    rCbCombat:SetPoint("TOPLEFT", 20, -52)
+    rCbCombat:SetPoint("TOPLEFT", 20, -68)
     rCbCombat:SetScale(0.95)
     rCbCombat:SetFrameLevel(radarItemModal:GetFrameLevel() + 5)
     local rCbCombatText = rCbCombat:CreateFontString(nil, "OVERLAY", "GameFontNormal")
@@ -239,7 +295,7 @@ shortcutFrame:SetScript("OnEvent", function()
 
     -- 2. Чекбокс "Окно"
     local rCbWindow = CreateFrame("CheckButton", "RAY_RadarCbWindow", radarItemModal, "InterfaceOptionsCheckButtonTemplate")
-    rCbWindow:SetPoint("TOPLEFT", 20, -82)
+    rCbWindow:SetPoint("TOPLEFT", 20, -98)
     rCbWindow:SetScale(0.95)
     rCbWindow:SetFrameLevel(radarItemModal:GetFrameLevel() + 5)
     local rCbWindowText = rCbWindow:CreateFontString(nil, "OVERLAY", "GameFontNormal")
@@ -255,7 +311,7 @@ shortcutFrame:SetScript("OnEvent", function()
     -- 3. Ползунок "Размер шрифта"
     local rSliderSize = CreateFrame("Slider", "RAY_RadarSliderSize", radarItemModal, "OptionsSliderTemplate")
     rSliderSize:SetSize(180, 16)
-    rSliderSize:SetPoint("TOPLEFT", 24, -130)
+    rSliderSize:SetPoint("TOPLEFT", 24, -146)
     rSliderSize:SetMinMaxValues(12, 48)
     rSliderSize:SetValueStep(1)
     rSliderSize:SetFrameLevel(radarItemModal:GetFrameLevel() + 5)
@@ -273,7 +329,7 @@ shortcutFrame:SetScript("OnEvent", function()
     -- 4. Выбор цвета
     local rColorBtn = CreateFrame("Button", nil, radarItemModal)
     rColorBtn:SetSize(20, 20)
-    rColorBtn:SetPoint("TOPLEFT", 24, -170)
+    rColorBtn:SetPoint("TOPLEFT", 24, -186)
     rColorBtn:SetFrameLevel(radarItemModal:GetFrameLevel() + 5)
     local rColorTex = rColorBtn:CreateTexture(nil, "BACKGROUND")
     rColorTex:SetAllPoints()
@@ -289,9 +345,9 @@ shortcutFrame:SetScript("OnEvent", function()
 
     -- 5. Длительность показа (сек)
     local rDurLabel = radarItemModal:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    rDurLabel:SetPoint("TOPLEFT", 24, -210)
+    rDurLabel:SetPoint("TOPLEFT", 24, -226)
     rDurLabel:SetText("Длительность показа алерта (сек):")
-    local rDurBox = CreateBlizzardEditBox(radarItemModal, 24, -228, 100, "RAY_RadarDurBox")
+    local rDurBox = CreateBlizzardEditBox(radarItemModal, 24, -244, 100, "RAY_RadarDurBox")
     rDurBox:SetFrameLevel(radarItemModal:GetFrameLevel() + 5)
     rDurBox:SetScript("OnTextChanged", function(self, isUserInput)
         if not isUserInput then return end
@@ -321,6 +377,7 @@ shortcutFrame:SetScript("OnEvent", function()
 
                 local del = CreateFrame("Button", nil, btn, "UIPanelCloseButton")
                 del:SetSize(18, 18) del:SetPoint("RIGHT", btn, "RIGHT", -2, 0)
+                RAY_SetTooltip(del, "Удалить безвозвратно")
                 btn.delBtn = del
                 radarListButtons[i] = btn
             end
@@ -357,7 +414,25 @@ shortcutFrame:SetScript("OnEvent", function()
         end
         rScrollChild:SetHeight(#RAY_Config.radarSpells * 26 + 20)
     end
+    local function SaveRadarRename()
+        local newTxt = rRenameBox:GetText():gsub("^%s*(.-)%s*$", "%1")
+        if newTxt ~= "" and selectedRadarIdx and RAY_Config.radarSpells[selectedRadarIdx] then
+            local spellID = tonumber(newTxt)
+            if spellID then
+                local sName = GetSpellInfo(spellID)
+                if sName then newTxt = sName end
+            end
+            RAY_Config.radarSpells[selectedRadarIdx].name = newTxt
+            rItemTitle:SetText(PASTEL_YELLOW .. newTxt .. "|r")
+            if RAY_Engine.RebuildRadarLookup then RAY_Engine.RebuildRadarLookup() end
+            RefreshRadarList()
+        end
+        rRenameBox:Hide()
+        rItemTitleBtn:Show()
+    end
 
+    rRenameBox:SetScript("OnEnterPressed", SaveRadarRename)
+    rRenameBox:SetScript("OnEscapePressed", function(self) self:Hide() rItemTitleBtn:Show() end)
     rColorBtn:SetScript("OnClick", function()
         if not selectedRadarIdx or not RAY_Config.radarSpells[selectedRadarIdx] then return end
         local cur = RAY_Config.radarSpells[selectedRadarIdx].color or { r = 0.5, g = 0.95, b = 0.8 }
