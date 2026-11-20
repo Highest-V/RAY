@@ -7,7 +7,7 @@ function RAY_Engine.InitSetsPage()
     
     -- ГЛОБАЛЬНОЕ МОДАЛЬНОЕ ОКНО ДЛЯ ВСЕХ БЛОКОВ СЕТОВ
     local modal = CreateFrame("Frame", "RAY_MWin_SetsGlobal", InterfaceOptionsFrame)
-    modal:SetSize(400, 480) modal:SetPoint("CENTER", InterfaceOptionsFrame, "CENTER", 80, 0) modal:Hide()
+    modal:SetSize(400, 496) modal:SetPoint("CENTER", InterfaceOptionsFrame, "CENTER", 80, 0) modal:Hide()
     modal:SetBackdrop({
         bgFile = "Interface\\Buttons\\WHITE8X8",
         edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border",
@@ -19,12 +19,26 @@ function RAY_Engine.InitSetsPage()
     modal:SetScript("OnDragStart", modal.StartMoving) modal:SetScript("OnDragStop", modal.StopMovingOrSizing)
     modal:SetFrameStrata("TOOLTIP")
 
-    local mTitle = modal:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge") mTitle:SetPoint("TOPLEFT", 24, -20)
+    local mTitleBtn = CreateFrame("Button", nil, modal)
+    mTitleBtn:SetPoint("TOPLEFT", 24, -18)
+    mTitleBtn:SetSize(330, 22)
+
+    local mTitle = mTitleBtn:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+    mTitle:SetPoint("LEFT", 0, 0)
+    mTitle:SetJustifyH("LEFT")
+
+    local mHintText = modal:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+    mHintText:SetPoint("TOPLEFT", 24, -40)
+    mHintText:SetText("2х ЛКМ по названию — изменить")
+
+    local mRenameBox = CreateBlizzardEditBox(modal, 24, -18, 320, "RAY_SetsRenameBox")
+    mRenameBox:Hide()
+
     local mClose = CreateFrame("Button", nil, modal, "UIPanelCloseButton") mClose:SetPoint("TOPRIGHT", -6, -6)
-    mClose:SetScript("OnClick", function() modal:Hide() end)
+    mClose:SetScript("OnClick", function() mRenameBox:Hide() mTitleBtn:Show() modal:Hide() end)
 
     -- Элементы управления внутри модального окна
-    local currentY = -60
+    local currentY = -76
     local function CreateModalCheckbox(lbl, key, tooltipText)
         local cb = CreateFrame("CheckButton", nil, modal, "InterfaceOptionsCheckButtonTemplate") cb:SetPoint("TOPLEFT", 24, currentY) cb:SetScale(0.95)
         local t = cb:CreateFontString(nil, "OVERLAY", "GameFontNormal") t:SetPoint("LEFT", cb, "RIGHT", 5, 1) t:SetText(lbl)
@@ -55,12 +69,49 @@ function RAY_Engine.InitSetsPage()
     end)
     RAY_SetTooltip(icdEditBox, "Формат: ВремяКД/ЗаСколькоПоказать. Например, '45/10'.")
 
+    mTitleBtn:SetScript("OnDoubleClick", function()
+        if not modal.specNum or not modal.storageKey or not modal.itemIndex then return end
+        local data = RAY_Config.specSettings[modal.specNum][modal.storageKey][modal.itemIndex]
+        if not data then return end
+        mTitleBtn:Hide()
+        mRenameBox:SetText(data.name or "")
+        mRenameBox:Show()
+        mRenameBox:SetFocus()
+        mRenameBox:HighlightText()
+    end)
+
+    local function SaveSetsRename()
+        local newTxt = mRenameBox:GetText():gsub("^%s*(.-)%s*$", "%1")
+        if newTxt ~= "" and modal.specNum and modal.storageKey and modal.itemIndex then
+            local data = RAY_Config.specSettings[modal.specNum][modal.storageKey][modal.itemIndex]
+            if data then
+                local spellID = tonumber(newTxt)
+                if spellID then
+                    local sName = GetSpellInfo(spellID)
+                    if sName then newTxt = sName end
+                end
+                data.name = newTxt
+                mTitle:SetText((modal.headerColorCode or "") .. newTxt .. "|r")
+                if RAY_Engine.UpdateEquipmentSetsCache then RAY_Engine.UpdateEquipmentSetsCache() end
+                if RAY_Engine.CheckAllAuras then RAY_Engine.CheckAllAuras() end
+                RefreshLocalSubList(modal.specNum, modal.storageKey)
+            end
+        end
+        mRenameBox:Hide()
+        mTitleBtn:Show()
+    end
+
+    mRenameBox:SetScript("OnEnterPressed", SaveSetsRename)
+    mRenameBox:SetScript("OnEscapePressed", function(self) self:Hide() mTitleBtn:Show() end)
+
     -- Функция для открытия модалки и заполнения её данными
     local function OpenSetsModal(specNum, storageKey, idx, headerColorCode)
         local data = RAY_Config.specSettings[specNum][storageKey][idx]
         if not data then return end
         
-        modal.specNum = specNum modal.storageKey = storageKey modal.itemIndex = idx
+        mRenameBox:Hide()
+        mTitleBtn:Show()
+        modal.specNum = specNum modal.storageKey = storageKey modal.itemIndex = idx modal.headerColorCode = headerColorCode
         mTitle:SetText(headerColorCode .. (data.name or "Настройка") .. "|r")
         
         cbCombat:SetChecked(data.onlyInCombat == true)
@@ -82,6 +133,8 @@ function RAY_Engine.InitSetsPage()
     local function SubDeleteButton_OnClick(self)
         local parent = self:GetParent()
         table.remove(RAY_Config.specSettings[parent.specNum][parent.storageKey], parent.itemIndex)
+        mRenameBox:Hide()
+        mTitleBtn:Show()
         modal:Hide()
         RefreshLocalSubList(parent.specNum, parent.storageKey) if RAY_Engine.CheckAllAuras then RAY_Engine.CheckAllAuras() end
     end
@@ -109,7 +162,7 @@ function RAY_Engine.InitSetsPage()
                 activeTex:SetBlendMode("ADD") activeTex:SetVertexColor(1, 0.8, 0, 0.3) activeTex:SetAllPoints(btn)
                 activeTex:Hide() btn.goldSelect = activeTex
 
-                local del = CreateFrame("Button", nil, btn, "UIPanelCloseButton") del:SetSize(20, 20) del:SetPoint("RIGHT", btn, "RIGHT", -2, 0) btn.del = del pBlock[idx] = btn
+                local del = CreateFrame("Button", nil, btn, "UIPanelCloseButton") del:SetSize(20, 20) del:SetPoint("RIGHT", btn, "RIGHT", -2, 0) RAY_SetTooltip(del, "Удалить безвозвратно") btn.del = del pBlock[idx] = btn
             end
             btn.specNum = specNum btn.storageKey = storageKey btn.itemIndex = idx btn.headerColorCode = pBlock.headerColorCode
             btn:SetScript("OnClick", SubButton_OnClick) btn.del:SetScript("OnClick", SubDeleteButton_OnClick)
@@ -132,7 +185,7 @@ function RAY_Engine.InitSetsPage()
             local blockTopY = startY - 30 - (blockOffsetIndex * 155) -- Сильно уменьшили шаг Y, так как галочек на экране больше нет!
             local container = CreateFrame("Frame", "RAY_Spec" .. specNum .. "Block" .. storageKey, scrollChild) container:SetSize(360, 140) container:SetPoint("TOPLEFT", scrollChild, "TOPLEFT", hOffsetSub, blockTopY)
             
-            local editBox = CreateBlizzardEditBox(container, 0, -25, 220, "RAY_SInp"..specNum..""..storageKey) RAY_SetTooltip(editBox, tText)
+            local editBox = CreateBlizzardEditBox(container, 0, -25, 220, "RAY_SInp"..specNum..""..storageKey, "Имя, ID или Shift+ЛКМ по спеллу...") RAY_SetTooltip(editBox, tText)
             local label = container:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall") label:SetPoint("BOTTOMLEFT", editBox, "TOPLEFT", 2, 6) label:SetText(headerColorCode .. labelTxt .. "|r")
             local btnOk = CreateFrame("Button", nil, container, "UIPanelButtonTemplate") btnOk:SetSize(45, 24) btnOk:SetPoint("LEFT", editBox, "RIGHT", 8, 0) btnOk:SetText(PASTEL_YELLOW.."ОК|r")
     RAY_SetTooltip(btnOk, "Сохранить автоматизацию в этот спек.")
