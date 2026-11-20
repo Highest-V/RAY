@@ -8,7 +8,7 @@ function RAY_Engine.InitBuffsPage()
     local panel = CreateFrame("Frame", "RAY_Panel_"..panelName, optionsPanel) panel.name = panelName panel.parent = "RAY"
     local pTitle = panel:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge") pTitle:SetPoint("TOPLEFT", 16, -14) pTitle:SetText(textColor.."Управление отслеживанием: "..panelName.."|r")
     
-    local editBox = CreateBlizzardEditBox(panel, 16, -50, 240, "RAY_EBox_"..panelName)
+    local editBox = CreateBlizzardEditBox(panel, 16, -50, 240, "RAY_EBox_"..panelName, "Имя, ID или Shift+ЛКМ по спеллу...")
     local elabel = panel:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall") elabel:SetPoint("BOTTOMLEFT", editBox, "TOPLEFT", 2, 6) elabel:SetText("Название эффекта / ID способности:")
     local btnOk = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate") btnOk:SetSize(55, 25) btnOk:SetPoint("LEFT", editBox, "RIGHT", 8, 0) btnOk:SetText(PASTEL_YELLOW.."ОК|r")
     RAY_SetTooltip(btnOk, "Сохранить ауру в список спека.")
@@ -20,7 +20,7 @@ function RAY_Engine.InitBuffsPage()
 
     -- СОЗДАНИЕ МОДАЛЬНОГО ОКНА НАСТРОЕК
     local modal = CreateFrame("Frame", "RAY_MWin_"..panelName, InterfaceOptionsFrame)
-    modal:SetSize(400, 700) modal:SetPoint("CENTER", InterfaceOptionsFrame, "CENTER", 80, 0) modal:Hide()
+    modal:SetSize(400, 718) modal:SetPoint("CENTER", InterfaceOptionsFrame, "CENTER", 80, 0) modal:Hide()
     
     modal:SetBackdrop({
         bgFile = "Interface\\Buttons\\WHITE8X8",
@@ -34,15 +34,29 @@ function RAY_Engine.InitBuffsPage()
     modal:SetScript("OnDragStart", modal.StartMoving) modal:SetScript("OnDragStop", modal.StopMovingOrSizing)
     modal:SetFrameStrata("TOOLTIP")
 
-    local mTitle = modal:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge") mTitle:SetPoint("TOPLEFT", 24, -20)
+    local mTitleBtn = CreateFrame("Button", nil, modal)
+    mTitleBtn:SetPoint("TOPLEFT", 24, -18)
+    mTitleBtn:SetSize(330, 22)
+
+    local mTitle = mTitleBtn:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+    mTitle:SetPoint("LEFT", 0, 0)
+    mTitle:SetJustifyH("LEFT")
+
+    local mHintText = modal:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+    mHintText:SetPoint("TOPLEFT", 24, -40)
+    mHintText:SetText("2х ЛКМ по названию — изменить")
+
+    local mRenameBox = CreateBlizzardEditBox(modal, 24, -18, 320, "RAY_BuffsRenameBox")
+    mRenameBox:Hide()
+
     local mClose = CreateFrame("Button", nil, modal, "UIPanelCloseButton") mClose:SetPoint("TOPRIGHT", -6, -6)
-    mClose:SetScript("OnClick", function() modal:Hide() end)
+    mClose:SetScript("OnClick", function() mRenameBox:Hide() mTitleBtn:Show() modal:Hide() end)
 
     local colorBtn = CreateFrame("Button", nil, modal)
     local editTime, sliderStacks, specSlider, cbCombat, cbWorld, cbParty, cbRaid, cbCooldown, cbCheckBuffCd, cbProc, cbWeapon, cbProgress, cbHideCap, cbExternal, cbSummon, cbOwnWindow, editChatMsg, chatDropDown, cbHideScreen
     
     local dropDown = CreateFrame("Frame", "RAY_Buffs_Target_DropDown", modal, "UIDropDownMenuTemplate") 
-    dropDown:SetPoint("TOPLEFT", 6, -55) 
+    dropDown:SetPoint("TOPLEFT", 6, -72) 
     dropDown:SetSize(150, 25)
     dropDown:SetFrameStrata("TOOLTIP")
     dropDown:SetFrameLevel(modal:GetFrameLevel() + 10)
@@ -94,7 +108,7 @@ function RAY_Engine.InitBuffsPage()
     end)
     RAY_SetTooltip(dropDown, "Указывает, на ком проверять наличие данного эффекта — на себе, цели, фокусе или питомце.")
 
-    local currentY = -95
+    local currentY = -112
 
     local function AddVerticalCheckbox(label, tText, key)
         local cb = CreateFrame("CheckButton", nil, modal, "InterfaceOptionsCheckButtonTemplate") cb:SetPoint("TOPLEFT", 16, currentY) cb:SetScale(0.95)
@@ -371,6 +385,7 @@ local function LocalUpdateLists()
                 local del = CreateFrame("Button", nil, btn, "UIPanelCloseButton")
                 del:SetSize(18, 18)
                 del:SetPoint("RIGHT", btn, "RIGHT", -2, 0)
+                RAY_SetTooltip(del, "Удалить безвозвратно")
                 btn.delBtn = del
                 btn:SetScript("OnClick", function(self)
                     if isSelfUpdating then return end
@@ -447,6 +462,39 @@ local function LocalUpdateLists()
     end
     listFrame:SetHeight(count * 26 + 20)
 end
+mTitleBtn:SetScript("OnDoubleClick", function()
+    local idx = GetActiveIndex()
+    local currentSpec = GetActiveTalentGroup() or 1
+    if not idx or not RAY_Config.specSettings[currentSpec].spells[idx] then return end
+    mTitleBtn:Hide()
+    mRenameBox:SetText(RAY_Config.specSettings[currentSpec].spells[idx].name or "")
+    mRenameBox:Show()
+    mRenameBox:SetFocus()
+    mRenameBox:HighlightText()
+end)
+
+local function SaveBuffRename()
+    local newTxt = mRenameBox:GetText():gsub("^%s*(.-)%s*$", "%1")
+    local idx = GetActiveIndex()
+    local currentSpec = GetActiveTalentGroup() or 1
+    if newTxt ~= "" and idx and RAY_Config.specSettings[currentSpec].spells[idx] then
+        local spellID = tonumber(newTxt)
+        if spellID then
+            local sName = GetSpellInfo(spellID)
+            if sName then newTxt = sName end
+        end
+        RAY_Config.specSettings[currentSpec].spells[idx].name = newTxt
+        mTitle:SetText(textColor .. (string.match(tostring(newTxt), "[^|/]+") or newTxt) .. "|r")
+        RAY_Engine.RebuildSpellsLookup()
+        if RAY_Engine.CheckAllAuras then RAY_Engine.CheckAllAuras() end
+        LocalUpdateLists()
+    end
+    mRenameBox:Hide()
+    mTitleBtn:Show()
+end
+
+mRenameBox:SetScript("OnEnterPressed", SaveBuffRename)
+mRenameBox:SetScript("OnEscapePressed", function(self) self:Hide() mTitleBtn:Show() end)
 
 local function ColorCallback()
     local r, g, b = ColorPickerFrame:GetColorRGB()
