@@ -1,0 +1,30 @@
+name: Auto Release RAY
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Скачиваем код
+        uses: actions/checkout@v4
+
+      - name: Собираем папку RAY в архив
+        run: |
+          mkdir -p build/RAY
+          cp -r * build/RAY/ 2>/dev/null || true
+          rm -rf build/RAY/build build/RAY/.git build/RAY/.github build/RAY/*.bat
+          cd build
+          zip -r ../RAY.zip RAY
+
+      - name: Публикуем релиз
+        uses: softprops/action-gh-release@v2
+        with:
+          files: RAY.zip
+          generate_release_notes: true
